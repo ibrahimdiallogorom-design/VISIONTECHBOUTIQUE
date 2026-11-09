@@ -910,7 +910,7 @@ async function initApp() {
   // Enregistrement du Service Worker Offline-First
   if ('serviceWorker' in navigator) {
     try {
-      await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.register('./sw.js');
     } catch (err) {
       console.warn('Service Worker non enregistré:', err);
     }

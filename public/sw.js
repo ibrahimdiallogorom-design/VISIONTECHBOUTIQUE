@@ -9,18 +9,18 @@ const MEDIA_CACHE_NAME = 'sahelexpress-media-v2';
 const API_CACHE_NAME = 'sahelexpress-api-v2';
 
 const APP_SHELL_ASSETS = [
-  '/',
-  '/index.html',
-  '/merchant.html',
-  '/install.html',
-  '/SahelExpress-Mobile-Offline.html',
-  '/css/styles.css',
-  '/js/db_local.js',
-  '/js/app.js',
-  '/js/merchant.js',
-  '/manifest.json',
-  '/media/icon-192.png',
-  '/media/icon-512.png'
+  './',
+  './index.html',
+  './merchant.html',
+  './install.html',
+  './SahelExpress-Mobile-Offline.html',
+  './css/styles.css',
+  './js/db_local.js',
+  './js/app.js',
+  './js/merchant.js',
+  './manifest.json',
+  './media/icon-192.png',
+  './media/icon-512.png'
 ];
 
 // Installation : Pré-cache immédiat du Shell Applicatif

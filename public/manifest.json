@@ -3,8 +3,8 @@
   "name": "SahelExpress — Boutique Résiliente",
   "short_name": "SahelExpress",
   "description": "Commander des articles manufacturés et produits locaux à 100% hors-ligne avec bascule automatique par SMS.",
-  "start_url": "/?source=pwa",
-  "scope": "/",
+  "start_url": "./index.html?source=pwa",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#d97706",
@@ -13,13 +13,13 @@
   "categories": ["shopping", "business"],
   "icons": [
     {
-      "src": "/media/icon-192.png",
+      "src": "media/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/media/icon-512.png",
+      "src": "media/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
