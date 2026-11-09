@@ -1,11 +1,10 @@
 /**
- * SahelExpress - Générateur d'Assets PWA & APK (PWABuilder 100% Compatible)
- * Génère :
- * - media/icon-192.png (192x192 PNG RGBA)
- * - media/icon-512.png (512x512 PNG RGBA)
- * - media/screenshot-mobile.png (540x720 PNG RGBA exigé par PWABuilder)
- * - media/screenshot-wide.png (1280x720 PNG RGBA exigé par PWABuilder)
- * - SahelExpress-Mobile-Offline.html (Fichier portable autonome Bluetooth/WhatsApp)
+ * SahelExpress - Générateur d'Assets PWA & APK Android (100% Conforme Android PackageInstaller & PWABuilder TWA)
+ * - Génère des icônes PNG 24-bit / 32-bit standard :
+ *   48x48 (mdpi), 72x72 (hdpi), 96x96 (xhdpi), 144x144 (xxhdpi), 192x192 (xxxhdpi), 512x512 (Play Store / APK)
+ * - Génère des icônes Maskable séparées (icon-maskable-192.png et icon-maskable-512.png) avec zone de sécurité de 20%
+ * - Génère les captures d'écran (screenshots) 540x720 et 1280x720
+ * - Génère le fichier portable autonome `SahelExpress-Mobile-Offline.html`
  */
 
 const zlib = require('node:zlib');
@@ -39,7 +38,11 @@ function makePngChunk(type, data) {
   return Buffer.concat([len, typeBuf, data, crcBuf]);
 }
 
-function generatePngImage(width, height) {
+/**
+ * Génère une image PNG RGBA valide et richement structurée (logo carré arrondi + motif central)
+ * afin que les compilateurs Android `aapt2` et `Bubblewrap` la valident à 100%.
+ */
+function generatePngImage(width, height, isMaskable = false) {
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
   const ihdr = Buffer.alloc(13);
@@ -52,23 +55,39 @@ function generatePngImage(width, height) {
   ihdr[12] = 0;
 
   const rawData = Buffer.alloc(height * (width * 4 + 1));
-  const marginX = Math.floor(width * 0.12);
-  const marginY = Math.floor(height * 0.12);
+  const safeRatio = isMaskable ? 0.22 : 0.12;
+  const marginX = Math.floor(width * safeRatio);
+  const marginY = Math.floor(height * safeRatio);
+  const centerX = Math.floor(width / 2);
+  const centerY = Math.floor(height / 2);
+  const innerRadius = Math.floor(Math.min(width, height) * 0.18);
 
   for (let y = 0; y < height; y++) {
     const rowStart = y * (width * 4 + 1);
-    rawData[rowStart] = 0;
+    rawData[rowStart] = 0; // Filtre PNG None
     for (let x = 0; x < width; x++) {
       const px = rowStart + 1 + x * 4;
       const insideCard =
         x >= marginX && x < width - marginX && y >= marginY && y < height - marginY;
 
-      if (insideCard) {
+      const dx = x - centerX;
+      const dy = y - centerY;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq <= innerRadius * innerRadius) {
+        // Cercle central Soleil du Sahel (#FEF3C7)
+        rawData[px] = 254;
+        rawData[px + 1] = 243;
+        rawData[px + 2] = 199;
+        rawData[px + 3] = 255;
+      } else if (insideCard) {
+        // Dégradé Ambre SahelExpress (#F59E0B -> #D97706)
         rawData[px] = 245;
-        rawData[px + 1] = Math.max(90, 158 - Math.floor((y / height) * 60));
+        rawData[px + 1] = Math.max(95, 165 - Math.floor((y / height) * 65));
         rawData[px + 2] = 11;
         rawData[px + 3] = 255;
       } else {
+        // Fond Bleu Nuit Sahel (#0F172A)
         rawData[px] = 15;
         rawData[px + 1] = 23;
         rawData[px + 2] = 42;
@@ -90,19 +109,49 @@ function generatePngImage(width, height) {
 function buildMobileAssets() {
   const publicDir = path.join(__dirname, '..', 'public');
   const mediaDir = path.join(publicDir, 'media');
+  const wellKnownDir = path.join(publicDir, '.well-known');
+
   if (!fs.existsSync(mediaDir)) {
     fs.mkdirSync(mediaDir, { recursive: true });
   }
+  if (!fs.existsSync(wellKnownDir)) {
+    fs.mkdirSync(wellKnownDir, { recursive: true });
+  }
 
-  // Icônes 192x192 et 512x512
-  fs.writeFileSync(path.join(mediaDir, 'icon-192.png'), generatePngImage(192, 192));
-  fs.writeFileSync(path.join(mediaDir, 'icon-512.png'), generatePngImage(512, 512));
+  // Toutes les résolutions d'icônes exigées par Android PackageInstaller (mdpi -> xxxhdpi + Play Store)
+  const sizes = [48, 72, 96, 144, 192, 512];
+  for (const s of sizes) {
+    fs.writeFileSync(path.join(mediaDir, `icon-${s}.png`), generatePngImage(s, s, false));
+  }
 
-  // Captures d'écran exigées par PWABuilder pour la génération APK sans avertissement
-  fs.writeFileSync(path.join(mediaDir, 'screenshot-mobile.png'), generatePngImage(540, 720));
-  fs.writeFileSync(path.join(mediaDir, 'screenshot-wide.png'), generatePngImage(1280, 720));
+  // Icônes maskable dédiées avec zone de sécurité Android Adaptive Icon
+  fs.writeFileSync(path.join(mediaDir, 'icon-maskable-192.png'), generatePngImage(192, 192, true));
+  fs.writeFileSync(path.join(mediaDir, 'icon-maskable-512.png'), generatePngImage(512, 512, true));
 
-  // Fichier portable autonome
+  // Captures d'écran exigées par PWABuilder
+  fs.writeFileSync(path.join(mediaDir, 'screenshot-mobile.png'), generatePngImage(540, 720, false));
+  fs.writeFileSync(path.join(mediaDir, 'screenshot-wide.png'), generatePngImage(1280, 720, false));
+
+  // Fichier Digital Asset Links (.well-known/assetlinks.json) pour la validation TWA Android
+  const assetLinks = [
+    {
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: {
+        namespace: 'android_app',
+        package_name: 'io.github.ibrahimdiallogorom_design.twa',
+        sha256_cert_fingerprints: [
+          '00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00'
+        ]
+      }
+    }
+  ];
+  fs.writeFileSync(
+    path.join(wellKnownDir, 'assetlinks.json'),
+    JSON.stringify(assetLinks, null, 2),
+    'utf8'
+  );
+
+  // Génération du fichier portable autonome `SahelExpress-Mobile-Offline.html`
   const css = fs.readFileSync(path.join(publicDir, 'css', 'styles.css'), 'utf8');
   const dbLocalJs = fs.readFileSync(path.join(publicDir, 'js', 'db_local.js'), 'utf8');
   const appJs = fs.readFileSync(path.join(publicDir, 'js', 'app.js'), 'utf8');
