@@ -500,6 +500,7 @@ function renderCatalogView() {
     const matchQuery =
       !query ||
       art.designation.toLowerCase().includes(query) ||
+      (art.description && art.description.toLowerCase().includes(query)) ||
       art.id.toLowerCase().includes(query) ||
       (art.categorie && art.categorie.toLowerCase().includes(query));
     return matchMerchant && matchCat && matchQuery;
@@ -516,15 +517,30 @@ function renderCatalogView() {
     )
   ].join('');
 
-  const pillsHtml = CATEGORIES.map(
-    (cat) => `
+  const dynamicCats = [
+    'Toutes',
+    ...(window.getAllAvailableCategories
+      ? window.getAllAvailableCategories(state.articles)
+      : CATEGORIES.slice(1))
+  ];
+
+  const pillsHtml = dynamicCats
+    .map((cat) => {
+      const icon =
+        cat === 'Toutes'
+          ? '📦'
+          : window.getCategoryIcon
+          ? window.getCategoryIcon(cat)
+          : CATEGORY_ICONS[cat] || '🏷️';
+      return `
       <button type="button" class="cat-pill ${
         state.selectedCategory === cat ? 'active' : ''
-      }" data-cat="${cat}">
-        ${CATEGORY_ICONS[cat] || '📦'} ${cat}
+      }" data-cat="${cat.replace(/"/g, '&quot;')}">
+        ${icon} ${cat}
       </button>
-    `
-  ).join('');
+    `;
+    })
+    .join('');
 
   const cardsHtml =
     filtered.length === 0
@@ -535,28 +551,50 @@ function renderCatalogView() {
           .map((art) => {
             const inCart = state.cart.find((c) => c.article_id === art.id);
             const qty = inCart ? inCart.quantite : 0;
-            const icon = CATEGORY_ICONS[art.categorie] || '📦';
+            const icon = window.getCategoryIcon
+              ? window.getCategoryIcon(art.categorie)
+              : CATEGORY_ICONS[art.categorie] || '📦';
+            const hasPhoto =
+              window.hasCustomProductPhoto && window.hasCustomProductPhoto(art.photo_url);
             const shopName = art.nom_boutique || 'SahelExpress Centrale';
+            const descText = (art.description || '').trim();
 
             return `
               <div class="product-card">
                 <div>
-                  <div class="product-thumb" data-open-product="${art.id}">
-                    <span class="thumb-icon">${icon}</span>
-                    <div class="thumb-meta">
-                      <span class="product-code">${art.id}</span>
-                      <span class="product-cat-tag">${art.categorie}</span>
-                    </div>
+                  <div class="product-thumb" data-open-product="${art.id}" style="${
+                    hasPhoto ? 'padding:0; overflow:hidden; position:relative; height:155px;' : ''
+                  }">
+                    ${
+                      hasPhoto
+                        ? `<img src="${art.photo_url}" alt="${art.designation.replace(/"/g, '&quot;')}" style="width:100%; height:100%; object-fit:cover; display:block;" />
+                           <div style="position:absolute; bottom:6px; left:6px; right:6px; display:flex; justify-content:space-between; background:rgba(15,23,42,0.82); padding:4px 8px; border-radius:6px;">
+                             <span class="product-code" style="font-size:0.72rem;">${art.id}</span>
+                             <span class="product-cat-tag" style="font-size:0.72rem;">${icon} ${art.categorie}</span>
+                           </div>`
+                        : `<span class="thumb-icon">${icon}</span>
+                           <div class="thumb-meta">
+                             <span class="product-code">${art.id}</span>
+                             <span class="product-cat-tag">${art.categorie}</span>
+                           </div>`
+                    }
                   </div>
                   <div style="margin-top:8px; font-size:0.75rem; color:#34d399; font-weight:700;">
                     🏪 ${shopName}
                   </div>
-                  <h3 class="product-title" data-open-product="${art.id}" style="margin-top:4px;">
+                  <h3 class="product-title" data-open-product="${art.id}" style="margin-top:4px; cursor:pointer;">
                     ${art.designation}
                   </h3>
+                  ${
+                    descText
+                      ? `<p data-open-product="${art.id}" style="font-size:0.81rem; color:var(--text-secondary); margin-top:6px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer;" title="Cliquez pour lire la description complète">
+                           ${descText}
+                         </p>`
+                      : ''
+                  }
                 </div>
                 <div>
-                  <div class="product-price-row">
+                  <div class="product-price-row" style="margin-top:10px;">
                     <span class="price-fcfa">${formatFcfa(art.prix_unitaire)}</span>
                     <span class="stock-badge ${art.stock_disponible <= 5 ? 'low' : ''}">
                       Stock: ${art.stock_disponible}
@@ -588,7 +626,7 @@ function renderCatalogView() {
           type="search"
           id="catalog-search-input"
           class="search-input"
-          placeholder="🔍 Rechercher un article en local (ex: Solaire, Riz, Brouette, PROD01...)"
+          placeholder="🔍 Rechercher un produit, bienfait ou catégorie (ex: Thé, Spiruline, Solaire, Riz...)"
           value="${state.searchQuery.replace(/"/g, '&quot;')}"
         />
       </div>
@@ -950,22 +988,41 @@ function renderModals() {
     return;
   }
 
-  // 2. MODALE FICHE PRODUIT
+  // 2. MODALE FICHE PRODUIT (PHOTO GRAND FORMAT + DESCRIPTION COMPLÈTE)
   if (state.selectedProductModal) {
     const art = state.selectedProductModal;
-    const icon = CATEGORY_ICONS[art.categorie] || '📦';
+    const icon = window.getCategoryIcon
+      ? window.getCategoryIcon(art.categorie)
+      : CATEGORY_ICONS[art.categorie] || '📦';
+    const hasPhoto = window.hasCustomProductPhoto && window.hasCustomProductPhoto(art.photo_url);
+    const descText = (art.description || '').trim();
+
     modalContainer.innerHTML = `
       <div class="modal-backdrop" id="close-modal-backdrop">
-        <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-box" style="max-width:500px;" onclick="event.stopPropagation()">
           <div class="modal-header">
-            <span class="product-code">${art.id} • ${art.categorie}</span>
+            <span class="product-code">${art.id} • ${icon} ${art.categorie}</span>
             <button type="button" class="btn-close" id="btn-close-modal">✕</button>
           </div>
-          <div style="text-align:center; padding: 18px; background: var(--bg-main); border-radius:12px; margin-bottom:14px;">
-            <div style="font-size:3.6rem;">${icon}</div>
-            <small style="color:#34d399;">🏪 Vendu par : ${art.nom_boutique || 'SahelExpress Centrale'}</small>
+          <div style="text-align:center; padding: ${hasPhoto ? '0' : '18px'}; background: var(--bg-main); border-radius:12px; margin-bottom:14px; overflow:hidden;">
+            ${
+              hasPhoto
+                ? `<img src="${art.photo_url}" alt="${art.designation.replace(/"/g, '&quot;')}" style="width:100%; max-height:260px; object-fit:cover; display:block;" />`
+                : `<div style="font-size:3.8rem;">${icon}</div>`
+            }
+            <div style="padding:8px 12px;">
+              <small style="color:#34d399; font-weight:700;">🏪 Vendu par : ${art.nom_boutique || 'SahelExpress Centrale'}</small>
+            </div>
           </div>
-          <h3 style="font-size:1.15rem; margin-bottom:8px;">${art.designation}</h3>
+          <h3 style="font-size:1.15rem; margin-bottom:10px;">${art.designation}</h3>
+          ${
+            descText
+              ? `<div style="background:rgba(15,23,42,0.65); border:1px solid var(--border-color); border-left:3px solid var(--accent-amber); padding:10px 12px; border-radius:8px; margin-bottom:14px; font-size:0.9rem; color:var(--text-secondary); line-height:1.5;">
+                   <strong style="color:var(--text-primary); display:block; font-size:0.78rem; margin-bottom:4px;">📝 DESCRIPTION & DÉTAILS DU PRODUIT :</strong>
+                   ${descText}
+                 </div>`
+              : `<p style="font-size:0.84rem; color:var(--text-muted); margin-bottom:14px;">Aucune description complémentaire renseignée pour cet article.</p>`
+          }
           <div class="product-price-row" style="margin-bottom:16px;">
             <span class="price-fcfa">${formatFcfa(art.prix_unitaire)}</span>
             <span class="stock-badge">Disponibilité : ${art.stock_disponible} en stock</span>

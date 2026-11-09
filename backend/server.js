@@ -90,8 +90,8 @@ function readJsonBody(req) {
     let totalBytes = 0;
     req.on('data', (chunk) => {
       totalBytes += chunk.length;
-      if (totalBytes > 1024 * 1024) {
-        reject(new Error('Payload trop volumineux (> 1 Mo)'));
+      if (totalBytes > 5 * 1024 * 1024) {
+        reject(new Error('Payload trop volumineux (> 5 Mo)'));
         req.destroy();
         return;
       }
@@ -602,10 +602,11 @@ const server = http.createServer(async (req, res) => {
 
       const id = (body.id || `PROD${Math.floor(50 + Math.random() * 900)}`).toUpperCase().trim();
       const designation = (body.designation || '').trim();
+      const description = (body.description || '').trim();
       const categorie = (body.categorie || 'Consommables').trim();
       const prixUnitaire = parseInt(body.prix_unitaire, 10);
       const stockDisponible = parseInt(body.stock_disponible ?? 0, 10);
-      const photoUrl = body.photo_url || `media/${id}.webp`;
+      const photoUrl = body.photo_url !== undefined ? String(body.photo_url).trim() : '';
       const isActive = body.is_active === undefined ? 1 : body.is_active ? 1 : 0;
       const nowIso = new Date().toISOString();
 
@@ -626,10 +627,11 @@ const server = http.createServer(async (req, res) => {
       const photoHash = md5Hash(`${id}:${prixUnitaire}:${nowIso}`);
 
       db.prepare(
-        `INSERT INTO articles (id, commercant_id, designation, categorie, prix_unitaire, stock_disponible, photo_url, photo_hash_md5, is_active, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO articles (id, commercant_id, designation, description, categorie, prix_unitaire, stock_disponible, photo_url, photo_hash_md5, is_active, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            designation = excluded.designation,
+           description = excluded.description,
            categorie = excluded.categorie,
            prix_unitaire = excluded.prix_unitaire,
            stock_disponible = excluded.stock_disponible,
@@ -641,6 +643,7 @@ const server = http.createServer(async (req, res) => {
         id,
         targetCommercantId,
         designation,
+        description,
         categorie,
         prixUnitaire,
         stockDisponible,
@@ -681,21 +684,25 @@ const server = http.createServer(async (req, res) => {
           ? parseInt(body.stock_disponible, 10)
           : existing.stock_disponible;
       const newDesignation = body.designation !== undefined ? body.designation : existing.designation;
+      const newDescription = body.description !== undefined ? body.description : (existing.description || '');
       const newCategorie = body.categorie !== undefined ? body.categorie : existing.categorie;
+      const newPhotoUrl = body.photo_url !== undefined ? body.photo_url : (existing.photo_url || '');
       const newActive =
         body.is_active !== undefined ? (body.is_active ? 1 : 0) : existing.is_active;
       const nowIso = new Date().toISOString();
 
       db.prepare(
         `UPDATE articles
-         SET designation = ?, categorie = ?, prix_unitaire = ?, stock_disponible = ?, is_active = ?,
+         SET designation = ?, description = ?, categorie = ?, prix_unitaire = ?, stock_disponible = ?, photo_url = ?, is_active = ?,
              photo_hash_md5 = ?, updated_at = ?
          WHERE id = ?`
       ).run(
         newDesignation,
+        newDescription,
         newCategorie,
         newPrix,
         newStock,
+        newPhotoUrl,
         newActive,
         md5Hash(`${articleId}:${newPrix}:${nowIso}`),
         nowIso,

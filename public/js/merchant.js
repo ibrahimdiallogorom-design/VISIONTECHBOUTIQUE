@@ -75,6 +75,7 @@ const merchantState = {
   thermalModalOrder: null,
   thermalWidth: '80mm',
   lastSavedToast: '',
+  newArticlePhotoDataUrl: '',
   promoProductText: 'Nouvel arrivage disponible dans notre boutique ! Commandez sur SahelExpress même hors-ligne.',
   gatewayTestSender: '+22670112233',
   gatewayTestSms: 'CMD#CL890#SEC3#PROD01:1;PROD10:2#ESP#FACE_CHATEAU_EAU',
@@ -329,16 +330,24 @@ async function fetchDashboardData() {
 }
 
 /**
- * Sauvegarde souveraine d'un article (désignation, catégorie, prix, quantité)
+ * Sauvegarde souveraine d'un article (désignation, description, catégorie libre, photo, prix, quantité)
  * 1) Directement dans la mémoire du téléphone (IndexedDB)
  * 2) Puis synchronisation vers le serveur s'il est en ligne
  */
 async function saveMerchantArticleEverywhere(articleObj, actionLabel) {
   const m = merchantState.currentMerchant;
+  const cleanCat = (articleObj.categorie || 'Consommables').trim() || 'Consommables';
+  if (window.addCustomCategory) {
+    window.addCustomCategory(cleanCat);
+  }
+
   const fullArticle = {
     ...articleObj,
     commercant_id: m.id,
     nom_boutique: m.nom_boutique,
+    categorie: cleanCat,
+    description: (articleObj.description || '').trim(),
+    photo_url: articleObj.photo_url || '',
     prix_unitaire: Math.max(0, parseInt(articleObj.prix_unitaire || 0, 10)),
     stock_disponible: Math.max(0, parseInt(articleObj.stock_disponible || 0, 10))
   };
@@ -360,8 +369,37 @@ async function saveMerchantArticleEverywhere(articleObj, actionLabel) {
   } catch {}
 
   showSavedNotification(
-    `✅ Stocké dans le téléphone : ${fullArticle.id} (${formatFcfa(fullArticle.prix_unitaire)} • Qté: ${fullArticle.stock_disponible})`
+    `✅ Stocké dans le téléphone : ${fullArticle.id} (${formatFcfa(fullArticle.prix_unitaire)} • Qté: ${fullArticle.stock_disponible} • Cat: ${fullArticle.categorie})`
   );
+}
+
+/**
+ * Mise à jour directe de la photo d'un article existant depuis la galerie/caméra du téléphone
+ */
+async function handleExistingArticlePhotoChange(articleId, file) {
+  const art = merchantState.articles.find((a) => a.id === articleId);
+  if (!art || !file) return;
+  try {
+    const compressedDataUrl = await window.compressProductPhotoFile(file, 480, 0.78);
+    const inpDes = document.getElementById(`des-${articleId}`);
+    const inpDesc = document.getElementById(`desc-${articleId}`);
+    const inpCat = document.getElementById(`cat-${articleId}`);
+    const inpPrix = document.getElementById(`prix-${articleId}`);
+    const inpStock = document.getElementById(`stock-${articleId}`);
+
+    const updated = {
+      ...art,
+      designation: inpDes ? inpDes.value.trim() : art.designation,
+      description: inpDesc ? inpDesc.value.trim() : (art.description || ''),
+      categorie: inpCat ? inpCat.value.trim() : art.categorie,
+      prix_unitaire: inpPrix ? parseInt(inpPrix.value, 10) : art.prix_unitaire,
+      stock_disponible: inpStock ? parseInt(inpStock.value, 10) : art.stock_disponible,
+      photo_url: compressedDataUrl
+    };
+    await saveMerchantArticleEverywhere(updated, 'Mise à jour Photo du produit');
+  } catch {
+    alert('Impossible de charger cette photo. Veuillez essayer une autre image.');
+  }
 }
 
 /**
@@ -373,6 +411,7 @@ async function quickAdjustArticle(articleId, deltaPrix, deltaStock) {
 
   // Lire les valeurs éventuellement modifiées dans les champs input à l'écran
   const inpDes = document.getElementById(`des-${articleId}`);
+  const inpDesc = document.getElementById(`desc-${articleId}`);
   const inpCat = document.getElementById(`cat-${articleId}`);
   const inpPrix = document.getElementById(`prix-${articleId}`);
   const inpStock = document.getElementById(`stock-${articleId}`);
@@ -383,7 +422,8 @@ async function quickAdjustArticle(articleId, deltaPrix, deltaStock) {
   const updated = {
     ...art,
     designation: inpDes ? inpDes.value.trim() : art.designation,
-    categorie: inpCat ? inpCat.value : art.categorie,
+    description: inpDesc ? inpDesc.value.trim() : (art.description || ''),
+    categorie: inpCat && inpCat.value.trim() ? inpCat.value.trim() : art.categorie,
     prix_unitaire: Math.max(0, basePrix + deltaPrix),
     stock_disponible: Math.max(0, baseStock + deltaStock)
   };
@@ -393,7 +433,7 @@ async function quickAdjustArticle(articleId, deltaPrix, deltaStock) {
       ? `Ajustement quantité (${deltaStock > 0 ? '+' + deltaStock : deltaStock})`
       : deltaPrix !== 0
       ? `Ajustement prix (${deltaPrix > 0 ? '+' + deltaPrix : deltaPrix} FCFA)`
-      : 'Modification directe';
+      : 'Modification fiche produit';
 
   await saveMerchantArticleEverywhere(updated, label);
 }
@@ -425,30 +465,35 @@ async function removeMerchantArticle(articleId) {
 }
 
 /**
- * Inscription d'un nouvel article par le Maître Marchand
+ * Inscription d'un nouvel article par le Maître Marchand (avec Photo, Description et Catégorie libre)
  */
 async function createNewArticle(e) {
   e.preventDefault();
   const m = merchantState.currentMerchant;
   const id = (document.getElementById('new-art-id').value || '').trim().toUpperCase();
   const designation = (document.getElementById('new-art-des').value || '').trim();
-  const categorie = document.getElementById('new-art-cat').value;
+  const description = (document.getElementById('new-art-desc')?.value || '').trim();
+  const categorie = (document.getElementById('new-art-cat').value || '').trim() || 'Divers';
   const prix = parseInt(document.getElementById('new-art-prix').value || '0', 10);
   const stock = parseInt(document.getElementById('new-art-stock').value || '0', 10);
 
   if (!designation || Number.isNaN(prix)) return;
 
   const newCode = id || 'PROD' + Math.floor(100 + Math.random() * 899);
+  const photoToSave = merchantState.newArticlePhotoDataUrl || '';
+  merchantState.newArticlePhotoDataUrl = '';
+
   await saveMerchantArticleEverywhere(
     {
       id: newCode,
       commercant_id: m.id,
       nom_boutique: m.nom_boutique,
       designation,
+      description,
       categorie,
       prix_unitaire: prix,
       stock_disponible: stock,
-      photo_url: `media/${newCode}.webp`,
+      photo_url: photoToSave,
       is_active: 1
     },
     'Inscription nouvel article'
@@ -603,14 +648,8 @@ function renderMerchantAuthGate() {
                       <input type="tel" id="reg-whatsapp" class="form-control" placeholder="Ex: +22670998877" required />
                     </div>
                     <div class="form-group">
-                      <label>Catégorie Principale</label>
-                      <select id="reg-cat" class="form-control">
-                        <option value="Solaire & Énergie">Solaire & Énergie</option>
-                        <option value="Consommables & Vivres">Consommables & Vivres</option>
-                        <option value="Quincaillerie">Quincaillerie</option>
-                        <option value="Petit électroménager">Petit électroménager</option>
-                        <option value="Papeterie & Divers">Papeterie & Divers</option>
-                      </select>
+                      <label>Catégorie Principale (écrivez librement ce que vous vendez)</label>
+                      <input type="text" id="reg-cat" class="form-control" placeholder="Ex: Thés de Santé, Compléments Alimentaires, Solaire..." value="Thés de Santé & Compléments Alimentaires" />
                     </div>
                   </div>
                 </div>
@@ -631,7 +670,7 @@ function renderMerchantAuthGate() {
 
 /**
  * Vue Souveraine du Maître Marchand : Stock Local dans le Téléphone
- * Permet à tout moment d'inscrire, augmenter, diminuer, modifier la désignation, ajuster les prix et ajuster les quantités.
+ * Permet à tout moment d'inscrire, augmenter, diminuer, modifier la désignation, la photo, la description, la catégorie libre, ajuster les prix et ajuster les quantités.
  */
 function renderInventoryView() {
   const m = merchantState.currentMerchant;
@@ -642,12 +681,23 @@ function renderInventoryView() {
     0
   );
 
+  const availableCategories = window.getAllAvailableCategories
+    ? window.getAllAvailableCategories(merchantState.articles)
+    : ['Thés de Santé', 'Compléments Alimentaires', 'Plantes & Bien-être', 'Solaire', 'Consommables', 'Quincaillerie', 'Petit électroménager', 'Papeterie'];
+
+  const datalistHtml = `
+    <datalist id="merchant-categories-datalist">
+      ${availableCategories.map((c) => `<option value="${c.replace(/"/g, '&quot;')}"></option>`).join('')}
+    </datalist>
+  `;
+
   const q = merchantState.inventorySearch.trim().toLowerCase();
   const filteredArticles = merchantState.articles.filter(
     (a) =>
       !q ||
       a.id.toLowerCase().includes(q) ||
       a.designation.toLowerCase().includes(q) ||
+      (a.description && a.description.toLowerCase().includes(q)) ||
       (a.categorie && a.categorie.toLowerCase().includes(q))
   );
 
@@ -655,41 +705,71 @@ function renderInventoryView() {
     filteredArticles.length === 0
       ? `<p style="color:var(--text-muted); padding:20px 0;">Aucun produit dans ce filtre. Utilisez le formulaire à droite pour inscrire un nouvel article dans votre boutique.</p>`
       : filteredArticles
-          .map(
-            (art) => `
-          <div class="order-dispatch-card" style="border-left-color:var(--accent-amber); padding:14px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-              <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:240px;">
-                <span class="product-code" style="font-size:0.86rem;">${art.id}</span>
-                <input
-                  type="text"
-                  id="des-${art.id}"
-                  class="form-control"
-                  style="padding:7px 10px; font-weight:700;"
-                  value="${art.designation.replace(/"/g, '&quot;')}"
-                  title="Modifier le nom de l'article"
-                />
+          .map((art) => {
+            const hasPhoto = window.hasCustomProductPhoto && window.hasCustomProductPhoto(art.photo_url);
+            const catIcon = window.getCategoryIcon ? window.getCategoryIcon(art.categorie) : '📦';
+            return `
+          <div class="order-dispatch-card" style="border-left-color:var(--accent-amber); padding:14px; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+              <!-- Vignette Photo du produit + Bouton Changer Photo -->
+              <div style="display:flex; flex-direction:column; align-items:center; gap:5px; width:82px;">
+                <div style="width:74px; height:74px; border-radius:10px; background:var(--bg-main); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; overflow:hidden;">
+                  ${
+                    hasPhoto
+                      ? `<img src="${art.photo_url}" alt="${art.id}" style="width:100%; height:100%; object-fit:cover;" />`
+                      : `<span style="font-size:2.1rem;">${catIcon}</span>`
+                  }
+                </div>
+                <label class="btn-sim-offline" style="font-size:0.72rem; padding:4px 7px; cursor:pointer; text-align:center; width:100%; border-color:var(--accent-amber); color:var(--accent-amber);">
+                  📷 Photo
+                  <input type="file" accept="image/*" data-photo-art="${art.id}" style="display:none;" />
+                </label>
               </div>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <select id="cat-${art.id}" class="form-control" style="padding:7px 10px; width:auto;">
-                  ${['Solaire', 'Consommables', 'Quincaillerie', 'Petit électroménager', 'Papeterie']
-                    .map(
-                      (c) =>
-                        `<option value="${c}" ${
-                          art.categorie === c ? 'selected' : ''
-                        }>${c}</option>`
-                    )
-                    .join('')}
-                </select>
-                <button
-                  type="button"
-                  class="btn-sim-offline"
-                  style="background:rgba(239,68,68,0.2); border-color:#ef4444; color:#fca5a5; padding:7px 10px;"
-                  data-del-art="${art.id}"
-                  title="Supprimer cet article"
-                >
-                  🗑️
-                </button>
+
+              <!-- Nom, Catégorie libre & Description du produit -->
+              <div style="flex:1; min-width:230px; display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span class="product-code" style="font-size:0.86rem;">${art.id}</span>
+                  <input
+                    type="text"
+                    id="des-${art.id}"
+                    class="form-control"
+                    style="padding:7px 10px; font-weight:700; flex:1; min-width:180px;"
+                    value="${art.designation.replace(/"/g, '&quot;')}"
+                    placeholder="Nom du produit"
+                    title="Modifier le nom de l'article"
+                  />
+                  <input
+                    type="text"
+                    id="cat-${art.id}"
+                    list="merchant-categories-datalist"
+                    class="form-control"
+                    style="padding:7px 10px; width:195px; border-color:rgba(245,158,11,0.5);"
+                    value="${(art.categorie || '').replace(/"/g, '&quot;')}"
+                    placeholder="Écrire la catégorie..."
+                    title="Écrivez librement la catégorie ou choisissez dans la liste"
+                  />
+                  <button
+                    type="button"
+                    class="btn-sim-offline"
+                    style="background:rgba(239,68,68,0.2); border-color:#ef4444; color:#fca5a5; padding:7px 10px;"
+                    data-del-art="${art.id}"
+                    title="Supprimer cet article"
+                  >
+                    🗑️
+                  </button>
+                </div>
+
+                <!-- Description du produit modifiable -->
+                <div>
+                  <textarea
+                    id="desc-${art.id}"
+                    class="form-control"
+                    rows="2"
+                    style="padding:7px 10px; font-size:0.84rem;"
+                    placeholder="📝 Description du produit (bienfaits, composition, conseils d'utilisation, posologie, poids...)"
+                  >${art.description || ''}</textarea>
+                </div>
               </div>
             </div>
 
@@ -745,8 +825,8 @@ function renderInventoryView() {
               </div>
             </div>
           </div>
-        `
-          )
+        `;
+          })
           .join('');
 
   const journalHtml =
@@ -765,6 +845,7 @@ function renderInventoryView() {
           .join('');
 
   return `
+    ${datalistHtml}
     ${
       merchantState.lastSavedToast
         ? `<div id="local-save-toast" style="padding:12px 16px; background:#064e3b; border:1px solid #10b981; color:#a7f3d0; border-radius:10px; margin-bottom:16px; font-weight:700;">
@@ -801,15 +882,45 @@ function renderInventoryView() {
           </button>
         </h2>
         <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">
-          Vous êtes le <strong>Maître Marchand</strong> de votre boutique : toutes vos modifications de noms, de prix et de quantités sont enregistrées instantanément dans la mémoire de votre téléphone et mises à jour dans le catalogue des acheteurs.
+          Vous êtes le <strong>Maître Marchand</strong> de votre boutique : ajoutez une <strong>photo</strong>, une <strong>description détaillée</strong>, écrivez librement vos <strong>propres catégories</strong> (ex: <em>Thés de Santé, Compléments Alimentaires...</em>) et ajustez vos prix et quantités dans votre téléphone.
         </p>
+
+        <!-- Barre de création libre de nouvelles catégories -->
+        <div style="background:var(--bg-main); padding:10px 12px; border-radius:10px; border:1px dashed var(--accent-amber); margin-bottom:14px;">
+          <small style="display:block; color:var(--accent-amber); font-weight:700; margin-bottom:6px;">
+            🏷️ VOS CATÉGORIES DE PRODUITS (Cliquez pour filtrer ou ajoutez librement une nouvelle catégorie) :
+          </small>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+            ${availableCategories
+              .map(
+                (c) => `
+                  <span class="cat-pill" style="font-size:0.76rem; padding:4px 9px;" data-pick-cat="${c.replace(/"/g, '&quot;')}">
+                    ${window.getCategoryIcon ? window.getCategoryIcon(c) : '🏷️'} ${c}
+                  </span>
+                `
+              )
+              .join('')}
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input
+              type="text"
+              id="inp-new-custom-cat"
+              class="form-control"
+              style="padding:7px 10px; font-size:0.85rem;"
+              placeholder="Écrire une nouvelle catégorie (ex: Cosmétiques Bio, Miels & Plantes, Huiles Naturelles...)"
+            />
+            <button type="button" class="btn-primary" id="btn-add-custom-cat" style="width:auto; padding:7px 14px; white-space:nowrap; font-size:0.85rem;">
+              ➕ Ajouter Catégorie
+            </button>
+          </div>
+        </div>
 
         <div class="search-box" style="margin-bottom:14px;">
           <input
             type="search"
             id="merchant-inv-search"
             class="search-input"
-            placeholder="🔍 Filtrer mes produits (nom, code PROD, catégorie...)"
+            placeholder="🔍 Filtrer mes produits (nom, description, code PROD, catégorie...)"
             value="${merchantState.inventorySearch.replace(/"/g, '&quot;')}"
           />
         </div>
@@ -821,32 +932,81 @@ function renderInventoryView() {
         <div class="panel-card" style="margin-bottom:18px; border-color:var(--accent-amber);">
           <h2>➕ Inscrire un Nouvel Article dans ma Boutique</h2>
           <form id="form-new-article">
-            <div class="form-group">
-              <label>Code Article Court (pour commande SMS, ex: PROD60)</label>
-              <input type="text" id="new-art-id" class="form-control" placeholder="Ex: PROD60 (ou laisser vide)" />
+            <!-- Photo du produit (Caméra ou Galerie du téléphone) -->
+            <div class="form-group" style="background:var(--bg-main); padding:12px; border-radius:10px; border:1px solid var(--border-color);">
+              <label style="color:var(--accent-amber);">📷 Photo du Produit (Caméra ou Galerie du téléphone)</label>
+              <div style="display:flex; align-items:center; gap:12px; margin-top:6px;">
+                <div id="new-art-photo-preview" style="width:68px; height:68px; border-radius:10px; background:#0f172a; border:1px dashed var(--accent-amber); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+                  ${
+                    merchantState.newArticlePhotoDataUrl
+                      ? `<img src="${merchantState.newArticlePhotoDataUrl}" alt="Aperçu" style="width:100%; height:100%; object-fit:cover;" />`
+                      : `<span style="font-size:1.8rem;">📸</span>`
+                  }
+                </div>
+                <div style="flex:1;">
+                  <input type="file" id="new-art-photo-file" accept="image/*" class="form-control" style="padding:6px; font-size:0.82rem;" />
+                  <small style="color:var(--text-muted); font-size:0.75rem; display:block; margin-top:4px;">
+                    La photo est automatiquement compressée et stockée dans votre téléphone (100% hors-ligne).
+                  </small>
+                </div>
+              </div>
             </div>
+
+            <div class="form-group">
+              <label>Code Article Court (pour commande SMS, ex: THE03, COMP05)</label>
+              <input type="text" id="new-art-id" class="form-control" placeholder="Ex: THE03 (ou laisser vide)" />
+            </div>
+
             <div class="form-group">
               <label>Désignation complète du produit *</label>
-              <input type="text" id="new-art-des" class="form-control" placeholder="Ex: Batterie Solaire Gel 100Ah 12V" required />
+              <input type="text" id="new-art-des" class="form-control" placeholder="Ex: Thé Vert Artémisia & Moringa Bio (25 Sachets)" required />
             </div>
+
             <div class="form-group">
-              <label>Catégorie *</label>
-              <select id="new-art-cat" class="form-control">
-                <option value="Solaire">Solaire</option>
-                <option value="Consommables">Consommables</option>
-                <option value="Quincaillerie">Quincaillerie</option>
-                <option value="Petit électroménager">Petit électroménager</option>
-                <option value="Papeterie">Papeterie</option>
-              </select>
+              <label>🏷️ Catégorie du produit * (Écrivez librement la vôtre ou cliquez ci-dessous)</label>
+              <input
+                type="text"
+                id="new-art-cat"
+                list="merchant-categories-datalist"
+                class="form-control"
+                placeholder="Écrivez ex: Thés de Santé, Compléments Alimentaires..."
+                value="Thés de Santé"
+                required
+              />
+              <div style="display:flex; gap:5px; flex-wrap:wrap; margin-top:6px;">
+                ${['Thés de Santé', 'Compléments Alimentaires', 'Plantes & Bien-être', 'Solaire', 'Consommables']
+                  .map(
+                    (c) => `
+                      <button type="button" class="cat-pill" style="font-size:0.72rem; padding:3px 8px;" data-fill-new-cat="${c}">
+                        ${window.getCategoryIcon ? window.getCategoryIcon(c) : ''} ${c}
+                      </button>
+                    `
+                  )
+                  .join('')}
+              </div>
             </div>
+
             <div class="form-group">
-              <label>Prix Unitaire (en Francs CFA) *</label>
-              <input type="number" id="new-art-prix" class="form-control" placeholder="Ex: 65000" required />
+              <label>📝 Description détaillée du produit (Bienfaits, composition, mode d'emploi...)</label>
+              <textarea
+                id="new-art-desc"
+                class="form-control"
+                rows="3"
+                placeholder="Ex: Riche en antioxydants naturels, aide à la digestion et renforce le système immunitaire. Prendre 1 tasse matin et soir..."
+              ></textarea>
             </div>
-            <div class="form-group">
-              <label>Quantité Initiale en Stock *</label>
-              <input type="number" id="new-art-stock" class="form-control" value="20" required />
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+              <div class="form-group">
+                <label>Prix Unitaire (FCFA) *</label>
+                <input type="number" id="new-art-prix" class="form-control" placeholder="Ex: 4500" required />
+              </div>
+              <div class="form-group">
+                <label>Quantité en Stock *</label>
+                <input type="number" id="new-art-stock" class="form-control" value="30" required />
+              </div>
             </div>
+
             <button type="submit" class="btn-primary" style="padding:13px;">
               🚀 Inscrire dans le Stock de mon Téléphone
             </button>
@@ -1345,6 +1505,78 @@ function bindMerchantEvents() {
   document.querySelectorAll('[data-del-art]').forEach((btn) => {
     btn.onclick = () => removeMerchantArticle(btn.dataset.delArt);
   });
+
+  // Changement de Photo sur un article existant
+  document.querySelectorAll('[data-photo-art]').forEach((inp) => {
+    inp.onchange = (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        handleExistingArticlePhotoChange(inp.dataset.photoArt, file);
+      }
+    };
+  });
+
+  // Sélection de Photo lors de l'inscription d'un nouvel article
+  const newPhotoInput = document.getElementById('new-art-photo-file');
+  if (newPhotoInput) {
+    newPhotoInput.onchange = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      try {
+        const dataUrl = await window.compressProductPhotoFile(file, 480, 0.78);
+        merchantState.newArticlePhotoDataUrl = dataUrl;
+        const previewEl = document.getElementById('new-art-photo-preview');
+        if (previewEl) {
+          previewEl.innerHTML = `<img src="${dataUrl}" alt="Aperçu" style="width:100%; height:100%; object-fit:cover;" />`;
+        }
+      } catch {
+        alert('Impossible de lire cette image.');
+      }
+    };
+  }
+
+  // Boutons rapides de suggestion de catégorie dans le formulaire nouvel article
+  document.querySelectorAll('[data-fill-new-cat]').forEach((btn) => {
+    btn.onclick = () => {
+      const catInput = document.getElementById('new-art-cat');
+      if (catInput) {
+        catInput.value = btn.dataset.fillNewCat;
+        catInput.focus();
+      }
+    };
+  });
+
+  // Clic sur une pastille de catégorie pour filtrer ou pré-remplir
+  document.querySelectorAll('[data-pick-cat]').forEach((badge) => {
+    badge.onclick = () => {
+      const chosen = badge.dataset.pickCat;
+      if (merchantState.inventorySearch === chosen) {
+        merchantState.inventorySearch = '';
+      } else {
+        merchantState.inventorySearch = chosen;
+      }
+      renderMerchantDashboard();
+    };
+  });
+
+  // Ajout volontaire d'une nouvelle catégorie personnalisée par le commerçant
+  const btnAddCat = document.getElementById('btn-add-custom-cat');
+  if (btnAddCat) {
+    btnAddCat.onclick = () => {
+      const inp = document.getElementById('inp-new-custom-cat');
+      const val = (inp ? inp.value : '').trim();
+      if (!val) {
+        alert('Veuillez écrire le nom de la nouvelle catégorie (ex: Thés de Santé, Compléments Alimentaires, Cosmétiques Bio...).');
+        return;
+      }
+      if (window.addCustomCategory) {
+        window.addCustomCategory(val);
+      }
+      const newArtCat = document.getElementById('new-art-cat');
+      if (newArtCat) newArtCat.value = val;
+      showSavedNotification(`🏷️ Nouvelle catégorie « ${val} » ajoutée à votre boutique !`);
+    };
+  }
 
   const btnExport = document.getElementById('btn-export-json');
   if (btnExport) btnExport.onclick = exportMerchantStockJson;

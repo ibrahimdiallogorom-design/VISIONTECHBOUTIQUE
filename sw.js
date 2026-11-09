@@ -5,9 +5,9 @@
  * - Support complet : Offline Navigation, Background Sync, Periodic Sync, Push Notifications & Message SkipWaiting
  */
 
-const SHELL_CACHE_NAME = 'sahelexpress-shell-v4';
-const MEDIA_CACHE_NAME = 'sahelexpress-media-v4';
-const API_CACHE_NAME = 'sahelexpress-api-v4';
+const SHELL_CACHE_NAME = 'sahelexpress-shell-v5';
+const MEDIA_CACHE_NAME = 'sahelexpress-media-v5';
+const API_CACHE_NAME = 'sahelexpress-api-v5';
 
 const APP_SHELL_ASSETS = [
   './',
