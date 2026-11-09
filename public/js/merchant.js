@@ -1,13 +1,14 @@
 /**
- * SahelExpress - Module Gestion & Dispatch Multi-Commerçants (Comptes Isolés + CRM WhatsApp & Avis)
- * Exigences :
- * 1. Accès impossible sans compte commerçant (Écran de Connexion / Création de Compte obligatoire)
- * 2. Possibilité d'avoir et d'utiliser plusieurs comptes commerçants sur la même application
- * 3. Isolation totale : chaque commerçant ne voit QUE ses commandes, ses stocks et ses avis
- * 4. Onglet "Clients WhatsApp & Avis" permettant de voir les avis/suggestions des acheteurs et de leur proposer des produits en 1 clic sur WhatsApp (`https://wa.me/...`)
+ * SahelExpress - Module Maître Marchand (Stock Local dans le Téléphone + Comptes Isolés + CRM WhatsApp)
+ * Fonctionnalités Souveraines du Maître Marchand :
+ * 1. Toutes les données de sa boutique (articles, prix, quantités, journal des mouvements) sont stockées
+ *    localement dans son téléphone (IndexedDB `SahelLocalStore`) et persistent 100% hors-ligne.
+ * 2. Boutons rapides pour Ajuster les Quantités (-10, -1, +1, +10, saisie libre), Ajuster les Prix (-500, +500 FCFA, saisie libre),
+ *    Modifier la Désignation/Catégorie, Inscrire un nouvel article ou Supprimer un article.
+ * 3. Exportation / Importation de la sauvegarde JSON de sa boutique locale sur son téléphone.
+ * 4. Isolation stricte entre les différents comptes marchands.
  */
 
-// Comptes de démonstration pré-configurés pour un fonctionnement immédiat même hors-ligne (GitHub Pages)
 const LOCAL_DEFAULT_MERCHANTS = [
   {
     id: 'M-SAHEL',
@@ -50,7 +51,6 @@ function saveLocalMerchants(list) {
 }
 
 const merchantState = {
-  // Session du commerçant actuellement connecté (null = écran verrouillé)
   currentMerchant: (() => {
     try {
       const s = sessionStorage.getItem('sahel_active_merchant');
@@ -60,18 +60,21 @@ const merchantState = {
     }
   })(),
   jwtToken: sessionStorage.getItem('sahel_active_merchant_jwt') || '',
-  authMode: 'login', // 'login' | 'register'
+  authMode: 'login',
   authError: '',
-  activeTab: 'queue', // 'queue' | 'inventory' | 'crm' | 'gateway'
+  activeTab: 'inventory', // Par défaut sur "Mes Stocks & Produits" pour que le Maître Marchand pilote sa boutique immédiatement
   statutFilter: 'ALL',
   channelFilter: 'ALL',
+  inventorySearch: '',
   orders: [],
   articles: [],
+  stockJournal: [],
   customers: [],
   avis: [],
   catalogHash: '',
   thermalModalOrder: null,
   thermalWidth: '80mm',
+  lastSavedToast: '',
   promoProductText: 'Nouvel arrivage disponible dans notre boutique ! Commandez sur SahelExpress même hors-ligne.',
   gatewayTestSender: '+22670112233',
   gatewayTestSms: 'CMD#CL890#SEC3#PROD01:1;PROD10:2#ESP#FACE_CHATEAU_EAU',
@@ -97,6 +100,18 @@ function formatDateTime(iso) {
   }
 }
 
+function showSavedNotification(msg) {
+  merchantState.lastSavedToast = msg;
+  renderMerchantDashboard();
+  setTimeout(() => {
+    if (merchantState.lastSavedToast === msg) {
+      merchantState.lastSavedToast = '';
+      const toastEl = document.getElementById('local-save-toast');
+      if (toastEl) toastEl.style.display = 'none';
+    }
+  }, 3000);
+}
+
 function getAuthHeaders() {
   const h = { 'Content-Type': 'application/json' };
   if (merchantState.jwtToken) {
@@ -105,9 +120,6 @@ function getAuthHeaders() {
   return h;
 }
 
-/**
- * Connexion à un compte Commerçant (Serveur API + Fallback Local multi-comptes)
- */
 async function handleMerchantLogin(e) {
   e.preventDefault();
   merchantState.authError = '';
@@ -120,7 +132,6 @@ async function handleMerchantLogin(e) {
     return;
   }
 
-  // 1. Tenter l'authentification sur le serveur Backend
   try {
     const res = await fetch('/api/merchants/login', {
       method: 'POST',
@@ -140,11 +151,8 @@ async function handleMerchantLogin(e) {
         return;
       }
     }
-  } catch {
-    // Mode hors-ligne ou GitHub Pages statique : vérifier dans le registre local des comptes commerçants
-  }
+  } catch {}
 
-  // 2. Fallback sur le registre local des comptes commerçants
   const localMerchants = getSavedLocalMerchants();
   const found = localMerchants.find(
     (m) =>
@@ -164,9 +172,6 @@ async function handleMerchantLogin(e) {
   await fetchDashboardData();
 }
 
-/**
- * Création d'un nouveau compte Commerçant isolé
- */
 async function handleMerchantRegister(e) {
   e.preventDefault();
   merchantState.authError = '';
@@ -185,7 +190,6 @@ async function handleMerchantRegister(e) {
     return;
   }
 
-  // 1. Tenter la création sur le serveur Backend
   try {
     const res = await fetch('/api/merchants/register', {
       method: 'POST',
@@ -202,7 +206,6 @@ async function handleMerchantRegister(e) {
     });
     if (res.ok) {
       const data = await res.json();
-      // Enregistrer aussi dans le registre local
       const list = getSavedLocalMerchants();
       list.push({ ...data.merchant, pin: password });
       saveLocalMerchants(list);
@@ -218,9 +221,7 @@ async function handleMerchantRegister(e) {
         return;
       }
     }
-  } catch {
-    // Fallback création locale (ex: GitHub Pages)
-  }
+  } catch {}
 
   const list = getSavedLocalMerchants();
   if (list.some((m) => m.telephone === telephone)) {
@@ -267,7 +268,8 @@ function logoutMerchant() {
 }
 
 /**
- * Récupère uniquement les données appartenant au Commerçant connecté (Isolation stricte)
+ * Charge en priorité les données stockées dans le téléphone du Maître Marchand (IndexedDB)
+ * puis synchronise avec le serveur si connecté.
  */
 async function fetchDashboardData() {
   if (!merchantState.currentMerchant) {
@@ -276,13 +278,18 @@ async function fetchDashboardData() {
   }
 
   const merchId = merchantState.currentMerchant.id;
+  const store = window.SahelLocalStore;
 
+  // 1. Lecture immédiate depuis le téléphone (Stock Local IndexedDB)
+  if (store) {
+    merchantState.articles = await store.getMerchantArticles(merchId);
+    merchantState.stockJournal = await store.getMerchantJournal(merchId);
+  }
+
+  // 2. Si le serveur est accessible, synchroniser les commandes, clients WhatsApp et avis
   try {
-    const [ordersRes, syncRes, crmRes] = await Promise.all([
+    const [ordersRes, crmRes] = await Promise.all([
       fetch(`/api/orders?commercant_id=${encodeURIComponent(merchId)}`, {
-        headers: getAuthHeaders()
-      }),
-      fetch(`/api/catalog/sync?commercant_id=${encodeURIComponent(merchId)}`, {
         headers: getAuthHeaders()
       }),
       fetch('/api/merchants/customers', {
@@ -294,54 +301,178 @@ async function fetchDashboardData() {
       const oData = await ordersRes.json();
       merchantState.orders = oData.orders || [];
     }
-    if (syncRes.ok) {
-      const cData = await syncRes.json();
-      merchantState.articles = cData.updated_articles || [];
-      merchantState.catalogHash = cData.catalog_hash || '';
-    }
     if (crmRes.ok) {
       const crmData = await crmRes.json();
       merchantState.customers = crmData.customers || [];
       merchantState.avis = crmData.avis || [];
     }
-    renderMerchantDashboard();
-    return;
   } catch {
-    // Fallback hors-ligne / GitHub Pages : isoler les données locales par commercant_id
-  }
-
-  // Mode statique / Hors-ligne : charger uniquement les articles de CE commerçant
-  const localRaw = localStorage.getItem('sahel_offline_merchant_articles_' + merchId);
-  if (localRaw) {
-    merchantState.articles = JSON.parse(localRaw);
-  } else {
-    const defaults = [
-      { id: 'PROD01', commercant_id: 'M-SAHEL', designation: 'Kit Solaire Domestique 50W + Batterie Lithium + 3 Lampes LED', categorie: 'Solaire', prix_unitaire: 32500, stock_disponible: 25 },
-      { id: 'PROD10', commercant_id: 'M-SAHEL', designation: 'Sac de Riz Brisure Parfumé 25 Kg', categorie: 'Consommables', prix_unitaire: 12500, stock_disponible: 120 },
-      { id: 'PROD20', commercant_id: 'M-DORI', designation: 'Cadenas Acier Blindé Anti-Poussière 60mm', categorie: 'Quincaillerie', prix_unitaire: 2500, stock_disponible: 90 },
-      { id: 'PROD21', commercant_id: 'M-DORI', designation: 'Brouette Renforcée Chantier Cuve Galvanisée 90L', categorie: 'Quincaillerie', prix_unitaire: 24000, stock_disponible: 18 }
-    ];
-    merchantState.articles = defaults.filter((a) => a.commercant_id === merchId);
-  }
-
-  // Charger l'acheteur enregistré sur ce téléphone dans la base CRM WhatsApp
-  const savedBuyerNom = localStorage.getItem('sahel_nom');
-  const savedBuyerWa = localStorage.getItem('sahel_whatsapp');
-  if (savedBuyerNom && savedBuyerWa) {
-    merchantState.customers = [
-      {
-        id: localStorage.getItem('sahel_client_code') || 'CL890',
-        nom_complet: savedBuyerNom,
-        whatsapp: savedBuyerWa,
-        ville: localStorage.getItem('sahel_ville') || 'Gorom-Gorom',
-        secteur_quartier: localStorage.getItem('sahel_quartier') || 'SEC3',
-        nb_commandes_boutique: 1,
-        total_depense_fcfa: 32500
-      }
-    ];
+    // Hors-ligne : charger les infos locales
+    const savedBuyerNom = localStorage.getItem('sahel_nom');
+    const savedBuyerWa = localStorage.getItem('sahel_whatsapp');
+    if (savedBuyerNom && savedBuyerWa) {
+      merchantState.customers = [
+        {
+          id: localStorage.getItem('sahel_client_code') || 'CL890',
+          nom_complet: savedBuyerNom,
+          whatsapp: savedBuyerWa,
+          ville: localStorage.getItem('sahel_ville') || 'Gorom-Gorom',
+          secteur_quartier: localStorage.getItem('sahel_quartier') || 'SEC3',
+          nb_commandes_boutique: 1,
+          total_depense_fcfa: 32500
+        }
+      ];
+    }
   }
 
   renderMerchantDashboard();
+}
+
+/**
+ * Sauvegarde souveraine d'un article (désignation, catégorie, prix, quantité)
+ * 1) Directement dans la mémoire du téléphone (IndexedDB)
+ * 2) Puis synchronisation vers le serveur s'il est en ligne
+ */
+async function saveMerchantArticleEverywhere(articleObj, actionLabel) {
+  const m = merchantState.currentMerchant;
+  const fullArticle = {
+    ...articleObj,
+    commercant_id: m.id,
+    nom_boutique: m.nom_boutique,
+    prix_unitaire: Math.max(0, parseInt(articleObj.prix_unitaire || 0, 10)),
+    stock_disponible: Math.max(0, parseInt(articleObj.stock_disponible || 0, 10))
+  };
+
+  // 1. Enregistrement immédiat dans le téléphone (IndexedDB)
+  if (window.SahelLocalStore) {
+    await window.SahelLocalStore.upsertMerchantArticle(fullArticle, actionLabel);
+    merchantState.articles = await window.SahelLocalStore.getMerchantArticles(m.id);
+    merchantState.stockJournal = await window.SahelLocalStore.getMerchantJournal(m.id);
+  }
+
+  // 2. Synchronisation vers le serveur (si en ligne)
+  try {
+    await fetch('/api/articles', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(fullArticle)
+    });
+  } catch {}
+
+  showSavedNotification(
+    `✅ Stocké dans le téléphone : ${fullArticle.id} (${formatFcfa(fullArticle.prix_unitaire)} • Qté: ${fullArticle.stock_disponible})`
+  );
+}
+
+/**
+ * Ajustement rapide en 1 clic (+1, -1, +10, -10 sur la quantité, ou +500 / -500 FCFA sur le prix)
+ */
+async function quickAdjustArticle(articleId, deltaPrix, deltaStock) {
+  const art = merchantState.articles.find((a) => a.id === articleId);
+  if (!art) return;
+
+  // Lire les valeurs éventuellement modifiées dans les champs input à l'écran
+  const inpDes = document.getElementById(`des-${articleId}`);
+  const inpCat = document.getElementById(`cat-${articleId}`);
+  const inpPrix = document.getElementById(`prix-${articleId}`);
+  const inpStock = document.getElementById(`stock-${articleId}`);
+
+  const basePrix = inpPrix ? parseInt(inpPrix.value, 10) : art.prix_unitaire;
+  const baseStock = inpStock ? parseInt(inpStock.value, 10) : art.stock_disponible;
+
+  const updated = {
+    ...art,
+    designation: inpDes ? inpDes.value.trim() : art.designation,
+    categorie: inpCat ? inpCat.value : art.categorie,
+    prix_unitaire: Math.max(0, basePrix + deltaPrix),
+    stock_disponible: Math.max(0, baseStock + deltaStock)
+  };
+
+  const label =
+    deltaStock !== 0
+      ? `Ajustement quantité (${deltaStock > 0 ? '+' + deltaStock : deltaStock})`
+      : deltaPrix !== 0
+      ? `Ajustement prix (${deltaPrix > 0 ? '+' + deltaPrix : deltaPrix} FCFA)`
+      : 'Modification directe';
+
+  await saveMerchantArticleEverywhere(updated, label);
+}
+
+/**
+ * Suppression d'un article de la boutique du Maître Marchand
+ */
+async function removeMerchantArticle(articleId) {
+  const m = merchantState.currentMerchant;
+  if (!confirm(`Voulez-vous vraiment retirer l'article ${articleId} de votre boutique ?`)) {
+    return;
+  }
+
+  if (window.SahelLocalStore) {
+    await window.SahelLocalStore.deleteMerchantArticle(articleId, m.id);
+    merchantState.articles = await window.SahelLocalStore.getMerchantArticles(m.id);
+    merchantState.stockJournal = await window.SahelLocalStore.getMerchantJournal(m.id);
+  }
+
+  try {
+    await fetch(`/api/articles/${encodeURIComponent(articleId)}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ is_active: false })
+    });
+  } catch {}
+
+  showSavedNotification(`🗑️ Article ${articleId} retiré du stock local de votre téléphone.`);
+}
+
+/**
+ * Inscription d'un nouvel article par le Maître Marchand
+ */
+async function createNewArticle(e) {
+  e.preventDefault();
+  const m = merchantState.currentMerchant;
+  const id = (document.getElementById('new-art-id').value || '').trim().toUpperCase();
+  const designation = (document.getElementById('new-art-des').value || '').trim();
+  const categorie = document.getElementById('new-art-cat').value;
+  const prix = parseInt(document.getElementById('new-art-prix').value || '0', 10);
+  const stock = parseInt(document.getElementById('new-art-stock').value || '0', 10);
+
+  if (!designation || Number.isNaN(prix)) return;
+
+  const newCode = id || 'PROD' + Math.floor(100 + Math.random() * 899);
+  await saveMerchantArticleEverywhere(
+    {
+      id: newCode,
+      commercant_id: m.id,
+      nom_boutique: m.nom_boutique,
+      designation,
+      categorie,
+      prix_unitaire: prix,
+      stock_disponible: stock,
+      photo_url: `media/${newCode}.webp`,
+      is_active: 1
+    },
+    'Inscription nouvel article'
+  );
+}
+
+/**
+ * Exporter le stock local de la boutique en fichier JSON dans le téléphone
+ */
+function exportMerchantStockJson() {
+  const m = merchantState.currentMerchant;
+  const backup = {
+    exported_at: new Date().toISOString(),
+    merchant: m,
+    articles: merchantState.articles,
+    journal: merchantState.stockJournal
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Stock-${m.code_sms || m.id}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 async function changeOrderStatus(orderId, newStatut) {
@@ -354,86 +485,7 @@ async function changeOrderStatus(orderId, newStatut) {
     if (res.ok) {
       await fetchDashboardData();
     }
-  } catch {
-    alert('Erreur lors de la mise à jour du statut.');
-  }
-}
-
-async function updateArticleStockAndPrice(articleId, prixUnitaire, stockDisponible) {
-  try {
-    const res = await fetch(`/api/articles/${encodeURIComponent(articleId)}`, {
-      method: 'PATCH',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        prix_unitaire: Number(prixUnitaire),
-        stock_disponible: Number(stockDisponible)
-      })
-    });
-    if (res.ok) {
-      await fetchDashboardData();
-      return;
-    }
   } catch {}
-
-  // Sauvegarde locale si hors-ligne
-  const item = merchantState.articles.find((a) => a.id === articleId);
-  if (item) {
-    item.prix_unitaire = Number(prixUnitaire);
-    item.stock_disponible = Number(stockDisponible);
-    localStorage.setItem(
-      'sahel_offline_merchant_articles_' + merchantState.currentMerchant.id,
-      JSON.stringify(merchantState.articles)
-    );
-    renderMerchantDashboard();
-  }
-}
-
-async function createNewArticle(e) {
-  e.preventDefault();
-  const id = document.getElementById('new-art-id').value.trim().toUpperCase();
-  const designation = document.getElementById('new-art-des').value.trim();
-  const categorie = document.getElementById('new-art-cat').value;
-  const prix = document.getElementById('new-art-prix').value;
-  const stock = document.getElementById('new-art-stock').value;
-
-  if (!designation || !prix) return;
-
-  try {
-    const res = await fetch('/api/articles', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        id: id || undefined,
-        commercant_id: merchantState.currentMerchant.id,
-        designation,
-        categorie,
-        prix_unitaire: Number(prix),
-        stock_disponible: Number(stock || 10)
-      })
-    });
-
-    if (res.ok) {
-      await fetchDashboardData();
-      return;
-    } else {
-      const err = await res.json().catch(() => ({}));
-      if (err.error) alert(err.error);
-    }
-  } catch {
-    merchantState.articles.push({
-      id: id || 'PROD' + Math.floor(100 + Math.random() * 899),
-      commercant_id: merchantState.currentMerchant.id,
-      designation,
-      categorie,
-      prix_unitaire: Number(prix),
-      stock_disponible: Number(stock || 10)
-    });
-    localStorage.setItem(
-      'sahel_offline_merchant_articles_' + merchantState.currentMerchant.id,
-      JSON.stringify(merchantState.articles)
-    );
-    renderMerchantDashboard();
-  }
 }
 
 async function triggerGatewayWebhook() {
@@ -456,27 +508,23 @@ async function triggerGatewayWebhook() {
   await fetchDashboardData();
 }
 
-/**
- * ÉCRAN VERROUILLÉ : Portail de Connexion / Création de Compte Commerçant
- * Sans compte valide, aucun commerçant ne peut ouvrir le tableau de bord ni voir les données d'un autre.
- */
 function renderMerchantAuthGate() {
   const savedMerchants = getSavedLocalMerchants();
 
   return `
     <div style="max-width: 900px; margin: 20px auto;">
       <div class="panel-card" style="border-color: var(--accent-amber); margin-bottom: 20px;">
-        <h2>🔐 Accès Commerçant Protégé (Isolation Multi-Comptes)</h2>
+        <h2>🔐 Accès Maître Marchand Protégé (Stock Local Téléphone & Multi-Comptes)</h2>
         <p style="font-size:0.92rem; color:var(--text-secondary); margin-bottom:14px;">
-          Chaque commerçant dispose de son propre compte strictement isolé. <strong>Personne ne peut accéder aux commandes, aux stocks ni aux clients d'un autre commerçant.</strong> Connectez-vous ou créez votre compte boutique ci-dessous :
+          Chaque Maître Marchand possède sa propre base de données stockée directement dans son téléphone (<strong>IndexedDB</strong>) et strictement isolée des autres boutiques. Connectez-vous pour gérer vos produits, ajuster vos prix et vos quantités :
         </p>
 
         <div class="category-pills" style="margin-bottom:16px;">
           <button type="button" class="cat-pill ${merchantState.authMode === 'login' ? 'active' : ''}" id="btn-switch-login">
-            🔑 Se Connecter à mon Compte
+            🔑 Se Connecter à ma Boutique
           </button>
           <button type="button" class="cat-pill ${merchantState.authMode === 'register' ? 'active' : ''}" id="btn-switch-register">
-            ➕ Créer un Nouveau Compte Commerçant
+            ➕ Créer une Nouvelle Boutique Marchand
           </button>
         </div>
 
@@ -501,20 +549,20 @@ function renderMerchantAuthGate() {
                   <input type="password" id="login-pin" class="form-control" placeholder="••••" required />
                 </div>
                 <button type="submit" class="btn-primary" style="padding:13px; font-size:1rem;">
-                  🔓 Ouvrir mon Tableau de Bord Commerçant
+                  🔓 Ouvrir ma Boutique Maître Marchand
                 </button>
               </form>
 
               <div style="margin-top:20px; padding-top:14px; border-top:1px dashed var(--border-color);">
                 <small style="color:var(--text-muted); display:block; margin-bottom:8px; font-weight:700;">
-                  🧪 COMPTES COMMERÇANTS PRÉ-CONFIGURÉS (CLIQUEZ POUR TESTER L'ISOLATION ENTRE 2 BOUTIQUES) :
+                  🧪 COMPTES MAÎTRES MARCHANDS PRÉ-CONFIGURÉS (CLIQUEZ POUR TESTER) :
                 </small>
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
                   ${savedMerchants
                     .map(
                       (m) => `
                         <button type="button" class="btn-sim-offline" data-quick-login="${m.telephone}" data-quick-pin="${m.pin || '1234'}" style="padding:8px 12px; border-color:var(--accent-amber); color:var(--accent-amber);">
-                          🏪 Tester <strong>${m.nom_boutique}</strong> (${m.telephone} / PIN: ${m.pin || '1234'})
+                          🏪 Ouvrir <strong>${m.nom_boutique}</strong> (${m.telephone} / PIN: ${m.pin || '1234'})
                         </button>
                       `
                     )
@@ -531,7 +579,7 @@ function renderMerchantAuthGate() {
                       <input type="text" id="reg-boutique" class="form-control" placeholder="Ex: Alimentation Générale Sebba" required />
                     </div>
                     <div class="form-group">
-                      <label>Nom & Prénom du Gérant *</label>
+                      <label>Nom & Prénom du Maître Marchand *</label>
                       <input type="text" id="reg-gerant" class="form-control" placeholder="Ex: Moussa Diallo" required />
                     </div>
                     <div class="form-group">
@@ -571,11 +619,244 @@ function renderMerchantAuthGate() {
                   <input type="password" id="reg-pin" class="form-control" placeholder="Ex: 2026" required />
                 </div>
                 <button type="submit" class="btn-primary" style="padding:13px; font-size:1rem;">
-                  🚀 Créer mon Compte Boutique Isolé
+                  🚀 Créer ma Boutique & mon Stock Local
                 </button>
               </form>
             `
         }
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Vue Souveraine du Maître Marchand : Stock Local dans le Téléphone
+ * Permet à tout moment d'inscrire, augmenter, diminuer, modifier la désignation, ajuster les prix et ajuster les quantités.
+ */
+function renderInventoryView() {
+  const m = merchantState.currentMerchant;
+  const totalRefs = merchantState.articles.length;
+  const totalUnits = merchantState.articles.reduce((s, a) => s + (a.stock_disponible || 0), 0);
+  const totalStockValue = merchantState.articles.reduce(
+    (s, a) => s + (a.prix_unitaire || 0) * (a.stock_disponible || 0),
+    0
+  );
+
+  const q = merchantState.inventorySearch.trim().toLowerCase();
+  const filteredArticles = merchantState.articles.filter(
+    (a) =>
+      !q ||
+      a.id.toLowerCase().includes(q) ||
+      a.designation.toLowerCase().includes(q) ||
+      (a.categorie && a.categorie.toLowerCase().includes(q))
+  );
+
+  const rowsHtml =
+    filteredArticles.length === 0
+      ? `<p style="color:var(--text-muted); padding:20px 0;">Aucun produit dans ce filtre. Utilisez le formulaire à droite pour inscrire un nouvel article dans votre boutique.</p>`
+      : filteredArticles
+          .map(
+            (art) => `
+          <div class="order-dispatch-card" style="border-left-color:var(--accent-amber); padding:14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+              <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:240px;">
+                <span class="product-code" style="font-size:0.86rem;">${art.id}</span>
+                <input
+                  type="text"
+                  id="des-${art.id}"
+                  class="form-control"
+                  style="padding:7px 10px; font-weight:700;"
+                  value="${art.designation.replace(/"/g, '&quot;')}"
+                  title="Modifier le nom de l'article"
+                />
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <select id="cat-${art.id}" class="form-control" style="padding:7px 10px; width:auto;">
+                  ${['Solaire', 'Consommables', 'Quincaillerie', 'Petit électroménager', 'Papeterie']
+                    .map(
+                      (c) =>
+                        `<option value="${c}" ${
+                          art.categorie === c ? 'selected' : ''
+                        }>${c}</option>`
+                    )
+                    .join('')}
+                </select>
+                <button
+                  type="button"
+                  class="btn-sim-offline"
+                  style="background:rgba(239,68,68,0.2); border-color:#ef4444; color:#fca5a5; padding:7px 10px;"
+                  data-del-art="${art.id}"
+                  title="Supprimer cet article"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:12px; align-items:end; margin-top:10px;">
+              <!-- Contrôle souverain du PRIX UNITAIRE en FCFA -->
+              <div style="background:var(--bg-main); padding:10px; border-radius:10px; border:1px solid var(--border-color);">
+                <small style="display:block; color:var(--text-muted); font-size:0.75rem; font-weight:700; margin-bottom:6px;">
+                  💰 AJUSTER LE PRIX UNITAIRE (FCFA)
+                </small>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <button type="button" class="qty-btn" style="width:auto; padding:0 8px; font-size:0.8rem;" data-adj-id="${art.id}" data-adj-prix="-500" data-adj-stock="0">-500</button>
+                  <input
+                    type="number"
+                    id="prix-${art.id}"
+                    class="form-control"
+                    style="text-align:center; font-weight:800; color:var(--accent-amber); padding:6px;"
+                    value="${art.prix_unitaire}"
+                  />
+                  <button type="button" class="qty-btn" style="width:auto; padding:0 8px; font-size:0.8rem;" data-adj-id="${art.id}" data-adj-prix="500" data-adj-stock="0">+500</button>
+                </div>
+              </div>
+
+              <!-- Contrôle souverain de la QUANTITÉ EN STOCK -->
+              <div style="background:var(--bg-main); padding:10px; border-radius:10px; border:1px solid var(--border-color);">
+                <small style="display:block; color:var(--text-muted); font-size:0.75rem; font-weight:700; margin-bottom:6px;">
+                  📦 AJUSTER LA QUANTITÉ EN STOCK
+                </small>
+                <div style="display:flex; align-items:center; gap:5px;">
+                  <button type="button" class="qty-btn" style="width:auto; padding:0 7px; font-size:0.78rem;" data-adj-id="${art.id}" data-adj-prix="0" data-adj-stock="-10">-10</button>
+                  <button type="button" class="qty-btn" style="width:30px;" data-adj-id="${art.id}" data-adj-prix="0" data-adj-stock="-1">−</button>
+                  <input
+                    type="number"
+                    id="stock-${art.id}"
+                    class="form-control"
+                    style="text-align:center; font-weight:800; color:#34d399; padding:6px;"
+                    value="${art.stock_disponible}"
+                  />
+                  <button type="button" class="qty-btn" style="width:30px;" data-adj-id="${art.id}" data-adj-prix="0" data-adj-stock="1">+</button>
+                  <button type="button" class="qty-btn" style="width:auto; padding:0 7px; font-size:0.78rem;" data-adj-id="${art.id}" data-adj-prix="0" data-adj-stock="10">+10</button>
+                </div>
+              </div>
+
+              <!-- Bouton d'enregistrement direct -->
+              <div>
+                <button
+                  type="button"
+                  class="btn-primary"
+                  style="padding:12px 16px; white-space:nowrap;"
+                  data-save-art="${art.id}"
+                >
+                  💾 Enregistrer
+                </button>
+              </div>
+            </div>
+          </div>
+        `
+          )
+          .join('');
+
+  const journalHtml =
+    merchantState.stockJournal.length === 0
+      ? `<p style="color:var(--text-muted); font-size:0.84rem;">Aucun ajustement récent enregistré sur ce téléphone.</p>`
+      : merchantState.stockJournal
+          .slice(0, 8)
+          .map(
+            (j) => `
+          <div style="display:flex; justify-content:space-between; font-size:0.8rem; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
+            <span><strong>${j.article_id}</strong> — ${j.action}</span>
+            <span style="color:var(--accent-amber);">${formatFcfa(j.prix_unitaire)} (Qté: ${j.stock_disponible})</span>
+          </div>
+        `
+          )
+          .join('');
+
+  return `
+    ${
+      merchantState.lastSavedToast
+        ? `<div id="local-save-toast" style="padding:12px 16px; background:#064e3b; border:1px solid #10b981; color:#a7f3d0; border-radius:10px; margin-bottom:16px; font-weight:700;">
+             ${merchantState.lastSavedToast}
+           </div>`
+        : ''
+    }
+
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-color:#10b981;">
+        <small>📱 Stockage Téléphone (IndexedDB)</small>
+        <div class="kpi-value" style="font-size:1.15rem; color:#34d399;">100% Actif & Autonome</div>
+      </div>
+      <div class="kpi-card">
+        <small>Références dans ma Boutique</small>
+        <div class="kpi-value">${totalRefs} produits</div>
+      </div>
+      <div class="kpi-card">
+        <small>Quantité Totale en Stock</small>
+        <div class="kpi-value" style="color:var(--accent-amber);">${totalUnits} unités</div>
+      </div>
+      <div class="kpi-card">
+        <small>Valeur Totale de mon Stock</small>
+        <div class="kpi-value" style="color:#34d399;">${formatFcfa(totalStockValue)}</div>
+      </div>
+    </div>
+
+    <div class="checkout-grid">
+      <div class="panel-card">
+        <h2>
+          <span>👑 Pilotage de ma Boutique : ${m.nom_boutique}</span>
+          <button type="button" class="btn-sim-offline" id="btn-export-json" style="border-color:var(--accent-amber); color:var(--accent-amber);">
+            📥 Sauvegarder mon Stock (.JSON)
+          </button>
+        </h2>
+        <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">
+          Vous êtes le <strong>Maître Marchand</strong> de votre boutique : toutes vos modifications de noms, de prix et de quantités sont enregistrées instantanément dans la mémoire de votre téléphone et mises à jour dans le catalogue des acheteurs.
+        </p>
+
+        <div class="search-box" style="margin-bottom:14px;">
+          <input
+            type="search"
+            id="merchant-inv-search"
+            class="search-input"
+            placeholder="🔍 Filtrer mes produits (nom, code PROD, catégorie...)"
+            value="${merchantState.inventorySearch.replace(/"/g, '&quot;')}"
+          />
+        </div>
+
+        ${rowsHtml}
+      </div>
+
+      <div>
+        <div class="panel-card" style="margin-bottom:18px; border-color:var(--accent-amber);">
+          <h2>➕ Inscrire un Nouvel Article dans ma Boutique</h2>
+          <form id="form-new-article">
+            <div class="form-group">
+              <label>Code Article Court (pour commande SMS, ex: PROD60)</label>
+              <input type="text" id="new-art-id" class="form-control" placeholder="Ex: PROD60 (ou laisser vide)" />
+            </div>
+            <div class="form-group">
+              <label>Désignation complète du produit *</label>
+              <input type="text" id="new-art-des" class="form-control" placeholder="Ex: Batterie Solaire Gel 100Ah 12V" required />
+            </div>
+            <div class="form-group">
+              <label>Catégorie *</label>
+              <select id="new-art-cat" class="form-control">
+                <option value="Solaire">Solaire</option>
+                <option value="Consommables">Consommables</option>
+                <option value="Quincaillerie">Quincaillerie</option>
+                <option value="Petit électroménager">Petit électroménager</option>
+                <option value="Papeterie">Papeterie</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Prix Unitaire (en Francs CFA) *</label>
+              <input type="number" id="new-art-prix" class="form-control" placeholder="Ex: 65000" required />
+            </div>
+            <div class="form-group">
+              <label>Quantité Initiale en Stock *</label>
+              <input type="number" id="new-art-stock" class="form-control" value="20" required />
+            </div>
+            <button type="submit" class="btn-primary" style="padding:13px;">
+              🚀 Inscrire dans le Stock de mon Téléphone
+            </button>
+          </form>
+        </div>
+
+        <div class="panel-card">
+          <h2>📜 Journal Local de mes Ajustements (Téléphone)</h2>
+          ${journalHtml}
+        </div>
       </div>
     </div>
   `;
@@ -714,106 +995,10 @@ function renderOrdersQueueView() {
       </div>
     </div>
 
-    <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
-      <div class="category-pills">
-        <button type="button" class="cat-pill ${merchantState.statutFilter === 'ALL' ? 'active' : ''}" data-filter-statut="ALL">Tous Statuts</button>
-        <button type="button" class="cat-pill ${merchantState.statutFilter === 'RECUE' ? 'active' : ''}" data-filter-statut="RECUE">⏳ RECUE</button>
-        <button type="button" class="cat-pill ${merchantState.statutFilter === 'EN_COURS' ? 'active' : ''}" data-filter-statut="EN_COURS">🛵 EN_COURS</button>
-        <button type="button" class="cat-pill ${merchantState.statutFilter === 'LIVREE' ? 'active' : ''}" data-filter-statut="LIVREE">✅ LIVREE</button>
-      </div>
-    </div>
-
     <div class="orders-queue-list">${cardsHtml}</div>
   `;
 }
 
-function renderInventoryView() {
-  const m = merchantState.currentMerchant;
-  const rowsHtml =
-    merchantState.articles.length === 0
-      ? `<p style="color:var(--text-muted); padding:16px 0;">Aucun article dans votre boutique pour le moment. Ajoutez votre premier produit à droite !</p>`
-      : merchantState.articles
-          .map(
-            (art) => `
-          <div class="cart-item-row" style="flex-wrap:wrap;">
-            <div style="flex:1; min-width:220px;">
-              <span class="product-code">${art.id}</span>
-              <strong style="margin-left:6px;">${art.designation}</strong>
-              <div style="font-size:0.78rem; color:var(--text-muted); margin-top:2px;">
-                Catégorie: ${art.categorie} • Boutique: ${m.nom_boutique}
-              </div>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <div>
-                <small style="display:block; font-size:0.72rem; color:var(--text-muted);">Prix (FCFA)</small>
-                <input type="number" class="form-control" style="width:115px; padding:6px 8px;" id="prix-${art.id}" value="${art.prix_unitaire}" />
-              </div>
-              <div>
-                <small style="display:block; font-size:0.72rem; color:var(--text-muted);">Stock Dispo</small>
-                <input type="number" class="form-control" style="width:90px; padding:6px 8px;" id="stock-${art.id}" value="${art.stock_disponible}" />
-              </div>
-              <button type="button" class="btn-primary" style="width:auto; margin-top:14px; padding:8px 14px;" data-save-art="${art.id}">
-                💾 Publier
-              </button>
-            </div>
-          </div>
-        `
-          )
-          .join('');
-
-  return `
-    <div class="checkout-grid">
-      <div class="panel-card">
-        <h2>
-          <span>📦 Stocks & Produits de : ${m.nom_boutique}</span>
-        </h2>
-        <p style="font-size:0.84rem; color:var(--text-secondary); margin-bottom:12px;">
-          Vos produits sont strictement rattachés à votre compte commerçant (<code>${m.id}</code>). Aucun autre commerçant ne peut les modifier.
-        </p>
-        ${rowsHtml}
-      </div>
-
-      <div class="panel-card">
-        <h2>➕ Ajouter un Produit à ma Boutique</h2>
-        <form id="form-new-article">
-          <div class="form-group">
-            <label>Code Article Court (pour SMS, ex: PROD60)</label>
-            <input type="text" id="new-art-id" class="form-control" placeholder="PROD60" required />
-          </div>
-          <div class="form-group">
-            <label>Désignation complète</label>
-            <input type="text" id="new-art-des" class="form-control" placeholder="Ex: Pompe Solaire Immergée 24V" required />
-          </div>
-          <div class="form-group">
-            <label>Catégorie</label>
-            <select id="new-art-cat" class="form-control">
-              <option value="Solaire">Solaire</option>
-              <option value="Consommables">Consommables</option>
-              <option value="Quincaillerie">Quincaillerie</option>
-              <option value="Petit électroménager">Petit électroménager</option>
-              <option value="Papeterie">Papeterie</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Prix Unitaire (en Francs CFA)</label>
-            <input type="number" id="new-art-prix" class="form-control" placeholder="15000" required />
-          </div>
-          <div class="form-group">
-            <label>Stock Initial Disponible</label>
-            <input type="number" id="new-art-stock" class="form-control" value="25" required />
-          </div>
-          <button type="submit" class="btn-primary">
-            🚀 Ajouter à mon Catalogue
-          </button>
-        </form>
-      </div>
-    </div>
-  `;
-}
-
-/**
- * Onglet Base de Données Clients WhatsApp, Avis & Proposition directe de produits
- */
 function renderCrmWhatsappView() {
   const m = merchantState.currentMerchant;
 
@@ -892,23 +1077,15 @@ function renderCrmWhatsappView() {
     <div class="checkout-grid">
       <div class="panel-card">
         <h2>📱 Base Clients WhatsApp & Proposition de Produits</h2>
-        <p style="font-size:0.86rem; color:var(--text-secondary); margin-bottom:12px;">
-          Retrouvez ici les acheteurs inscrits avec leur nom et numéro WhatsApp. Personnalisez votre offre ci-dessous et envoyez-la en 1 clic sur WhatsApp :
-        </p>
-
         <div class="form-group">
           <label>Message d'offre / Nouveau produit à proposer aux clients :</label>
           <textarea id="inp-promo-msg" class="form-control" rows="2">${merchantState.promoProductText}</textarea>
         </div>
-
         ${customersHtml}
       </div>
 
       <div class="panel-card">
         <h2>⭐ Avis Reçus & Produits Demandés (${m.nom_boutique})</h2>
-        <p style="font-size:0.86rem; color:var(--text-secondary); margin-bottom:12px;">
-          Seuls les avis et demandes de produits adressés à votre boutique s'affichent ici :
-        </p>
         ${avisHtml}
       </div>
     </div>
@@ -921,20 +1098,14 @@ function renderGatewaySimulatorView() {
     <div class="checkout-grid">
       <div class="panel-card">
         <h2>📡 Console Passerelle SMS Locale</h2>
-        <p style="font-size:0.88rem; color:var(--text-secondary); margin-bottom:14px;">
-          Lorsqu'un SMS contient les codes articles de votre boutique, la commande est automatiquement routée dans votre compte isolé (<strong>${merchantState.currentMerchant.nom_boutique}</strong>).
-        </p>
-
         <div class="form-group">
           <label>Numéro GSM Expéditeur (Client)</label>
           <input type="text" id="gw-sender" class="form-control" value="${merchantState.gatewayTestSender}" />
         </div>
-
         <div class="form-group">
           <label>Chaîne SMS Compactée reçue</label>
           <textarea id="gw-message" class="form-control" rows="3" style="font-family:monospace;">${merchantState.gatewayTestSms}</textarea>
         </div>
-
         <button type="button" class="btn-primary" id="btn-fire-sms">
           📩 Injecter le SMS dans la Passerelle & Décoder
         </button>
@@ -1004,8 +1175,7 @@ function renderThermalSlipModal() {
           <div class="thermal-divider"></div>
           <div>
             <strong>BON DE LIVRAISON : #${order.id}</strong><br/>
-            <span>Date : ${formatDateTime(order.created_at)}</span><br/>
-            <span>Canal : ${order.mode_transmission}</span>
+            <span>Date : ${formatDateTime(order.created_at)}</span>
           </div>
           <div class="thermal-divider"></div>
           <div>
@@ -1060,43 +1230,41 @@ function renderMerchantDashboard() {
   const root = document.getElementById('merchant-view-root');
   if (!root) return;
 
-  // SI AUCUN COMPTE COMMERÇANT N'EST CONNECTÉ -> VERROUILLER L'ACCÈS
   if (!merchantState.currentMerchant) {
     if (headerEl) headerEl.style.display = 'none';
     if (btnRefresh) btnRefresh.style.display = 'none';
     if (btnLogout) btnLogout.style.display = 'none';
     if (bannerTitle) {
-      bannerTitle.textContent = '🔒 Espace Commerçant Verrouillé — Connexion Obligatoire';
+      bannerTitle.textContent = '🔒 Espace Maître Marchand Verrouillé — Connexion Obligatoire';
     }
     root.innerHTML = renderMerchantAuthGate();
     bindAuthEvents();
     return;
   }
 
-  // COMPTE COMMERÇANT CONNECTÉ -> AFFICHER SON ESPACE ISOLÉ
   const m = merchantState.currentMerchant;
   if (headerEl) headerEl.style.display = 'flex';
   if (btnRefresh) btnRefresh.style.display = 'inline-block';
   if (btnLogout) btnLogout.style.display = 'inline-block';
   if (bannerTitle) {
-    bannerTitle.textContent = `🟢 Connecté : ${m.nom_boutique} (Gérant : ${m.nom_gerant} • Tél : ${m.telephone})`;
+    bannerTitle.textContent = `👑 Maître Marchand : ${m.nom_boutique} (Stock Local Téléphone Actif)`;
   }
 
   const shopHeading = document.getElementById('merchant-shop-heading');
   const shopSub = document.getElementById('merchant-shop-subtitle');
   if (shopHeading) shopHeading.textContent = m.nom_boutique;
   if (shopSub) {
-    shopSub.textContent = `Compte Isolé ID: ${m.id} • Code SMS: ${m.code_sms} • Ville: ${m.ville}`;
+    shopSub.textContent = `Maître Marchand : ${m.nom_gerant} • Données stockées dans ce téléphone (ID: ${m.id})`;
   }
 
   document.querySelectorAll('.tab-btn[data-mtab]').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.mtab === merchantState.activeTab);
   });
 
-  if (merchantState.activeTab === 'queue') {
-    root.innerHTML = renderOrdersQueueView();
-  } else if (merchantState.activeTab === 'inventory') {
+  if (merchantState.activeTab === 'inventory') {
     root.innerHTML = renderInventoryView();
+  } else if (merchantState.activeTab === 'queue') {
+    root.innerHTML = renderOrdersQueueView();
   } else if (merchantState.activeTab === 'crm') {
     root.innerHTML = renderCrmWhatsappView();
   } else {
@@ -1141,6 +1309,49 @@ function bindAuthEvents() {
 }
 
 function bindMerchantEvents() {
+  const invSearch = document.getElementById('merchant-inv-search');
+  if (invSearch) {
+    invSearch.oninput = (e) => {
+      merchantState.inventorySearch = e.target.value;
+      const pos = e.target.selectionStart;
+      renderMerchantDashboard();
+      const restored = document.getElementById('merchant-inv-search');
+      if (restored) {
+        restored.focus();
+        restored.setSelectionRange(pos, pos);
+      }
+    };
+  }
+
+  // Boutons d'ajustement rapide (-500, +500 FCFA, -10, -1, +1, +10 unités)
+  document.querySelectorAll('[data-adj-id]').forEach((btn) => {
+    btn.onclick = () => {
+      const id = btn.dataset.adjId;
+      const dPrix = parseInt(btn.dataset.adjPrix || '0', 10);
+      const dStock = parseInt(btn.dataset.adjStock || '0', 10);
+      quickAdjustArticle(id, dPrix, dStock);
+    };
+  });
+
+  // Bouton Enregistrer (modification libre de désignation, catégorie, prix ou stock)
+  document.querySelectorAll('[data-save-art]').forEach((btn) => {
+    btn.onclick = () => {
+      const id = btn.dataset.saveArt;
+      quickAdjustArticle(id, 0, 0);
+    };
+  });
+
+  // Bouton Supprimer un article
+  document.querySelectorAll('[data-del-art]').forEach((btn) => {
+    btn.onclick = () => removeMerchantArticle(btn.dataset.delArt);
+  });
+
+  const btnExport = document.getElementById('btn-export-json');
+  if (btnExport) btnExport.onclick = exportMerchantStockJson;
+
+  const formNewArt = document.getElementById('form-new-article');
+  if (formNewArt) formNewArt.onsubmit = createNewArticle;
+
   document.querySelectorAll('[data-filter-statut]').forEach((btn) => {
     btn.onclick = () => {
       merchantState.statutFilter = btn.dataset.filterStatut;
@@ -1163,18 +1374,6 @@ function bindMerchantEvents() {
       }
     };
   });
-
-  document.querySelectorAll('[data-save-art]').forEach((btn) => {
-    btn.onclick = () => {
-      const id = btn.dataset.saveArt;
-      const prix = document.getElementById(`prix-${id}`).value;
-      const stock = document.getElementById(`stock-${id}`).value;
-      updateArticleStockAndPrice(id, prix, stock);
-    };
-  });
-
-  const formNewArt = document.getElementById('form-new-article');
-  if (formNewArt) formNewArt.onsubmit = createNewArticle;
 
   const inpPromo = document.getElementById('inp-promo-msg');
   if (inpPromo) {

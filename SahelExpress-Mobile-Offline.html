@@ -839,11 +839,15 @@ body {
   <div id="modal-root"></div>
 
   <script>/**
- * SahelExpress - Gestionnaire de Base de Données Locale (IndexedDB) Multi-Commerçants & Avis
+ * SahelExpress - Gestionnaire de Base de Données Locale (IndexedDB)
+ * Architecture souveraine Multi-Boutiques :
+ * - Stocke le catalogue global Acheteur ET la base locale isolée de chaque Maître Marchand (`merchant_vault`)
+ * - Permet au Maître Marchand d'inscrire, augmenter, diminuer, modifier ses prix et ses quantités 100% dans son téléphone
+ * - Synchronise en temps réel la boutique locale du marchand avec le catalogue Acheteur sur le même téléphone et avec le serveur
  */
 
 const IDB_NAME = 'SahelExpressLocalDB';
-const IDB_VERSION = 2;
+const IDB_VERSION = 3;
 
 const FALLBACK_EMBEDDED_CATALOG = [
   { id: 'PROD01', commercant_id: 'M-SAHEL', nom_boutique: 'SahelExpress Centrale (Gorom-Gorom)', designation: 'Kit Solaire Domestique 50W + Batterie Lithium + 3 Lampes LED', categorie: 'Solaire', prix_unitaire: 32500, stock_disponible: 25, photo_url: 'media/PROD01.webp', is_active: 1 },
@@ -876,6 +880,7 @@ class LocalStore {
         if (!db.objectStoreNames.contains('articles')) {
           const store = db.createObjectStore('articles', { keyPath: 'id' });
           store.createIndex('categorie', 'categorie', { unique: false });
+          store.createIndex('commercant_id', 'commercant_id', { unique: false });
         }
         if (!db.objectStoreNames.contains('cart')) {
           db.createObjectStore('cart', { keyPath: 'article_id' });
@@ -885,6 +890,9 @@ class LocalStore {
         }
         if (!db.objectStoreNames.contains('reviews_local')) {
           db.createObjectStore('reviews_local', { keyPath: 'id', autoIncrement: true });
+        }
+        if (!db.objectStoreNames.contains('merchant_stock_journal')) {
+          db.createObjectStore('merchant_stock_journal', { keyPath: 'id', autoIncrement: true });
         }
         if (!db.objectStoreNames.contains('meta')) {
           db.createObjectStore('meta', { keyPath: 'key' });
@@ -929,9 +937,8 @@ class LocalStore {
           await this.applyDeltaSync(FALLBACK_EMBEDDED_CATALOG, []);
           resolve(FALLBACK_EMBEDDED_CATALOG);
         } else {
-          // Garantir que commercant_id et nom_boutique existent sur les anciens enregistrements
           const enriched = list
-            .filter((a) => Boolean(a.is_active))
+            .filter((a) => a.is_active === undefined || Boolean(a.is_active))
             .map((a) => {
               const fb = FALLBACK_EMBEDDED_CATALOG.find((f) => f.id === a.id);
               return {
@@ -944,6 +951,81 @@ class LocalStore {
         }
       };
       req.onerror = () => resolve(FALLBACK_EMBEDDED_CATALOG);
+    });
+  }
+
+  /**
+   * Récupère uniquement les articles stockés dans le téléphone appartenant à un Maître Marchand donné
+   */
+  async getMerchantArticles(commercantId) {
+    const all = await this.getAllArticles();
+    return all.filter((a) => a.commercant_id === commercantId);
+  }
+
+  /**
+   * Sauvegarde ou met à jour un article directement dans le téléphone du Maître Marchand (IndexedDB)
+   */
+  async upsertMerchantArticle(article, actionLabel = 'Modification locale') {
+    const db = await this.open();
+    const record = {
+      ...article,
+      is_active: article.is_active === undefined ? 1 : article.is_active,
+      updated_at: new Date().toISOString()
+    };
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(['articles', 'merchant_stock_journal'], 'readwrite');
+      tx.objectStore('articles').put(record);
+      tx.objectStore('merchant_stock_journal').add({
+        commercant_id: record.commercant_id,
+        article_id: record.id,
+        designation: record.designation,
+        prix_unitaire: record.prix_unitaire,
+        stock_disponible: record.stock_disponible,
+        action: actionLabel,
+        timestamp: record.updated_at
+      });
+      tx.oncomplete = () => resolve(record);
+      tx.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  /**
+   * Supprime un article de la boutique locale du Maître Marchand
+   */
+  async deleteMerchantArticle(articleId, commercantId) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(['articles', 'merchant_stock_journal'], 'readwrite');
+      tx.objectStore('articles').delete(articleId);
+      tx.objectStore('merchant_stock_journal').add({
+        commercant_id: commercantId,
+        article_id: articleId,
+        designation: articleId,
+        prix_unitaire: 0,
+        stock_disponible: 0,
+        action: 'Suppression article',
+        timestamp: new Date().toISOString()
+      });
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  /**
+   * Récupère l'historique des mouvements de stock/prix effectués sur le téléphone du marchand
+   */
+  async getMerchantJournal(commercantId) {
+    const db = await this.open();
+    return new Promise((resolve) => {
+      const tx = db.transaction('merchant_stock_journal', 'readonly');
+      const req = tx.objectStore('merchant_stock_journal').getAll();
+      req.onsuccess = () => {
+        const list = (req.result || []).filter((j) => j.commercant_id === commercantId);
+        list.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+        resolve(list.slice(0, 30));
+      };
+      req.onerror = () => resolve([]);
     });
   }
 
