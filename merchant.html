@@ -4,19 +4,22 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0f172a" />
-  <title>SahelExpress — Tableau de Bord Commerçant & Dispatch Livreur</title>
+  <title>SahelExpress — Espace Commerçant Sécurisé (Multi-Boutiques)</title>
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
-  <!-- Bandeau supérieur Centrale Logistique -->
+  <!-- Bandeau supérieur Centrale Commerçant -->
   <div class="status-banner online no-print">
     <div class="status-indicator">
       <span class="status-dot"></span>
-      <span>Centrale Logistique SahelExpress — File Temps Réel Unifiée (Data HTTPS + Passerelle SMS)</span>
+      <span id="merchant-banner-title">Espace Commerçant Sécurisé — Authentification Requise</span>
     </div>
     <div class="banner-actions">
-      <button type="button" class="btn-sim-offline" id="btn-refresh-dashboard">
-        🔄 Actualiser maintenant
+      <button type="button" class="btn-sim-offline" id="btn-refresh-dashboard" style="display:none;">
+        🔄 Actualiser
+      </button>
+      <button type="button" class="btn-sim-offline" id="btn-logout-merchant" style="display:none; background:#dc2626; border-color:#ef4444;">
+        🔒 Changer de Compte / Déconnexion
       </button>
       <a href="index.html" class="btn-sim-offline" style="text-decoration:none;">
         🛍️ Retour Boutique Acheteur
@@ -24,30 +27,33 @@
     </div>
   </div>
 
-  <!-- En-tête Tableau de Bord -->
-  <header class="app-header no-print">
+  <!-- En-tête Tableau de Bord (masqué tant que le commerçant n'est pas connecté) -->
+  <header class="app-header no-print" id="merchant-authenticated-header" style="display:none;">
     <div class="brand-title">
-      <div class="brand-logo">🚚</div>
+      <div class="brand-logo">🏪</div>
       <div class="brand-text">
-        <h1>Gestion & Dispatch (Commerçant / Livreur)</h1>
-        <p>Réception Data + SMS • Appel Client 1-Clic • Impression Thermique 58mm/80mm • Stocks Delta</p>
+        <h1 id="merchant-shop-heading">Ma Boutique Commerçant</h1>
+        <p id="merchant-shop-subtitle">Espace 100% Isolé • Vos Commandes, Vos Stocks & Votre Base Clients WhatsApp</p>
       </div>
     </div>
 
     <nav class="nav-tabs" aria-label="Navigation Commerçant">
       <button type="button" class="tab-btn active" data-mtab="queue">
-        📋 File de Commandes (Temps Réel)
+        📋 Mes Commandes
       </button>
       <button type="button" class="tab-btn" data-mtab="inventory">
-        📦 Stocks & Catalogue (Push Delta)
+        📦 Mes Stocks & Produits
+      </button>
+      <button type="button" class="tab-btn" data-mtab="crm">
+        💬 Clients WhatsApp & Avis
       </button>
       <button type="button" class="tab-btn" data-mtab="gateway">
-        📡 Simulateur Passerelle SMS
+        📡 Passerelle SMS
       </button>
     </nav>
   </header>
 
-  <!-- Contenu principal -->
+  <!-- Contenu principal (Portail de Connexion/Création de Compte OU Tableau de Bord Isolé) -->
   <main class="main-container no-print" id="merchant-view-root"></main>
 
   <!-- Modale Bon de Livraison Thermique 58mm/80mm -->

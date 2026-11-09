@@ -1,10 +1,7 @@
 /**
- * SahelExpress - Module Base de Données Relationnelle (SQLite Natif Node.js 24)
- * Conforme au Chapitre 4 du Cahier des Charges :
- * - TABLE clients
- * - TABLE articles
- * - TABLE commandes
- * - TABLE lignes_commande
+ * SahelExpress - Module Base de Données Relationnelle Multi-Commerçants (SaaS Multi-Tenant)
+ * - Isolation stricte des comptes commerçants (table `commercants` + `commercant_id` sur articles et commandes)
+ * - Base de données Acheteurs & CRM WhatsApp (table `clients` + table `avis_clients`)
  */
 
 const { DatabaseSync } = require('node:sqlite');
@@ -20,19 +17,45 @@ if (!fs.existsSync(DATA_DIR)) {
 const DB_PATH = path.join(DATA_DIR, 'sahelexpress.db');
 const db = new DatabaseSync(DB_PATH);
 
-// Optimisations SQLite pour performance et intégrité référentielle
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 db.exec('PRAGMA synchronous = NORMAL;');
 
-/**
- * Initialisation du schéma relationnel exact de la fiche technique
- */
+function md5Hash(str) {
+  return crypto.createHash('md5').update(str).digest('hex');
+}
+
+function hashPassword(password, salt = 'sahel-salt-2026') {
+  return crypto.pbkdf2Sync(String(password), salt, 1000, 32, 'sha256').toString('hex');
+}
+
+function addColumnIfNotExists(table, columnDef) {
+  const colName = columnDef.split(' ')[0];
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === colName)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDef}`);
+  }
+}
+
 function initSchema() {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS commercants (
+      id VARCHAR(36) PRIMARY KEY,
+      nom_boutique VARCHAR(120) NOT NULL,
+      nom_gerant VARCHAR(100) NOT NULL,
+      telephone VARCHAR(25) UNIQUE NOT NULL,
+      whatsapp VARCHAR(25),
+      ville VARCHAR(50) DEFAULT 'Gorom-Gorom',
+      categorie_principale VARCHAR(60) DEFAULT ' Commerce Général',
+      code_sms VARCHAR(15) UNIQUE NOT NULL,
+      password_hash VARCHAR(128) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS clients (
       id VARCHAR(36) PRIMARY KEY,
       telephone VARCHAR(20) UNIQUE NOT NULL,
+      whatsapp VARCHAR(25),
       nom_complet VARCHAR(100),
       ville VARCHAR(50) DEFAULT 'Gorom-Gorom',
       secteur_quartier VARCHAR(100),
@@ -42,6 +65,7 @@ function initSchema() {
 
     CREATE TABLE IF NOT EXISTS articles (
       id VARCHAR(20) PRIMARY KEY,
+      commercant_id VARCHAR(36) DEFAULT 'M-SAHEL',
       designation VARCHAR(150) NOT NULL,
       categorie VARCHAR(50),
       prix_unitaire INTEGER NOT NULL,
@@ -54,6 +78,7 @@ function initSchema() {
 
     CREATE TABLE IF NOT EXISTS commandes (
       id VARCHAR(36) PRIMARY KEY,
+      commercant_id VARCHAR(36) DEFAULT 'M-SAHEL',
       client_id VARCHAR(36) REFERENCES clients(id),
       total_fcfa INTEGER NOT NULL,
       mode_transmission VARCHAR(10) CHECK (mode_transmission IN ('DATA_HTTPS', 'SMS', 'LOCAL_WIFI')),
@@ -73,239 +98,141 @@ function initSchema() {
       prix_applique INTEGER NOT NULL
     );
 
-    CREATE INDEX IF NOT EXISTS idx_articles_updated_at ON articles(updated_at);
-    CREATE INDEX IF NOT EXISTS idx_commandes_created_at ON commandes(created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_commandes_dedup ON commandes(sms_dedup_hash);
+    CREATE TABLE IF NOT EXISTS avis_clients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      commercant_id VARCHAR(36) NOT NULL,
+      article_id VARCHAR(20),
+      client_id VARCHAR(36),
+      client_nom VARCHAR(100),
+      client_whatsapp VARCHAR(25),
+      note INTEGER CHECK (note >= 1 AND note <= 5),
+      commentaire TEXT,
+      suggestion_produit TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Migration douce si la base existait déjà depuis l'étape 1
+  addColumnIfNotExists('clients', 'whatsapp VARCHAR(25)');
+  addColumnIfNotExists('articles', "commercant_id VARCHAR(36) DEFAULT 'M-SAHEL'");
+  addColumnIfNotExists('commandes', "commercant_id VARCHAR(36) DEFAULT 'M-SAHEL'");
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_articles_commercant ON articles(commercant_id);
+    CREATE INDEX IF NOT EXISTS idx_commandes_commercant ON commandes(commercant_id);
+    CREATE INDEX IF NOT EXISTS idx_avis_commercant ON avis_clients(commercant_id);
   `);
 }
 
-/**
- * Génère un hash MD5 court pour vérifier l'intégrité des miniatures
- */
-function md5Hash(str) {
-  return crypto.createHash('md5').update(str).digest('hex');
-}
-
-/**
- * Peuple la base avec un catalogue réaliste adapté au Sahel & Liptako
- * (Gorom-Gorom, Dori, Sebba, Markoye) et aux 5 catégories officielles :
- * - Quincaillerie
- * - Petit électroménager
- * - Solaire
- * - Consommables
- * - Papeterie
- */
 function seedInitialData() {
-  const countRow = db.prepare('SELECT COUNT(*) as total FROM articles').get();
-  if (countRow && countRow.total > 0) {
-    return;
-  }
-
   const nowIso = new Date().toISOString();
 
-  const initialArticles = [
-    // Catégorie : Solaire
-    {
-      id: 'PROD01',
-      designation: 'Kit Solaire Domestique 50W + Batterie Lithium + 3 Lampes LED',
-      categorie: 'Solaire',
-      prix_unitaire: 32500,
-      stock_disponible: 25,
-      photo_url: '/media/PROD01.webp'
-    },
-    {
-      id: 'PROD02',
-      designation: 'Lampe Torche Solaire Rechargeable + Port USB Powerbank',
-      categorie: 'Solaire',
-      prix_unitaire: 4500,
-      stock_disponible: 80,
-      photo_url: '/media/PROD02.webp'
-    },
-    {
-      id: 'PROD03',
-      designation: 'Panneau Solaire Monocristallin 150W 12V Haute Résilience',
-      categorie: 'Solaire',
-      prix_unitaire: 48000,
-      stock_disponible: 14,
-      photo_url: '/media/PROD03.webp'
-    },
+  // 1. Création de 2 comptes commerçants distincts et totalement isolés
+  const merchCount = db.prepare('SELECT COUNT(*) as c FROM commercants').get().c;
+  if (merchCount === 0) {
+    const insertMerch = db.prepare(`
+      INSERT INTO commercants (id, nom_boutique, nom_gerant, telephone, whatsapp, ville, categorie_principale, code_sms, password_hash, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-    // Catégorie : Consommables
-    {
-      id: 'PROD10',
-      designation: 'Sac de Riz Brisure Parfumé 25 Kg',
-      categorie: 'Consommables',
-      prix_unitaire: 12500,
-      stock_disponible: 120,
-      photo_url: '/media/PROD10.webp'
-    },
-    {
-      id: 'PROD11',
-      designation: 'Bidon Huile Alimentaire 5 Litres',
-      categorie: 'Consommables',
-      prix_unitaire: 5500,
-      stock_disponible: 65,
-      photo_url: '/media/PROD11.webp'
-    },
-    {
-      id: 'PROD12',
-      designation: 'Carton de Savon de Ménage Local (24 Barres)',
-      categorie: 'Consommables',
-      prix_unitaire: 6000,
-      stock_disponible: 50,
-      photo_url: '/media/PROD12.webp'
-    },
+    // Commerçant 1 : Centrale SahelExpress (PIN / Mot de passe: 1234)
+    insertMerch.run(
+      'M-SAHEL',
+      'SahelExpress Centrale (Gorom-Gorom)',
+      'Ibrahim Diallo',
+      '+22670001122',
+      '+22670001122',
+      'Gorom-Gorom',
+      'Solaire & Alimentation Générale',
+      'SAHEL',
+      hashPassword('1234'),
+      nowIso
+    );
 
-    // Catégorie : Quincaillerie
-    {
-      id: 'PROD20',
-      designation: 'Cadenas Acier Blindé Anti-Poussière 60mm',
-      categorie: 'Quincaillerie',
-      prix_unitaire: 2500,
-      stock_disponible: 90,
-      photo_url: '/media/PROD20.webp'
-    },
-    {
-      id: 'PROD21',
-      designation: 'Brouette Renforcée Chantier Cuve Galvanisée 90L',
-      categorie: 'Quincaillerie',
-      prix_unitaire: 24000,
-      stock_disponible: 18,
-      photo_url: '/media/PROD21.webp'
-    },
-    {
-      id: 'PROD22',
-      designation: 'Caisse à Outils Métallique Complète (32 Pièces)',
-      categorie: 'Quincaillerie',
-      prix_unitaire: 18500,
-      stock_disponible: 22,
-      photo_url: '/media/PROD22.webp'
-    },
-
-    // Catégorie : Petit électroménager
-    {
-      id: 'PROD30',
-      designation: 'Ventilateur Rechargeable 12V Solaire/Secteur Autonomie 10h',
-      categorie: 'Petit électroménager',
-      prix_unitaire: 21000,
-      stock_disponible: 30,
-      photo_url: '/media/PROD30.webp'
-    },
-    {
-      id: 'PROD31',
-      designation: 'Bouilloire Électrique Inox Basse Consommation 1.8L',
-      categorie: 'Petit électroménager',
-      prix_unitaire: 6500,
-      stock_disponible: 40,
-      photo_url: '/media/PROD31.webp'
-    },
-    {
-      id: 'PROD32',
-      designation: 'Radio Récepteur FM/SW/MW Rechargeable Solaire + Bluetooth',
-      categorie: 'Petit électroménager',
-      prix_unitaire: 7500,
-      stock_disponible: 55,
-      photo_url: '/media/PROD32.webp'
-    },
-
-    // Catégorie : Papeterie
-    {
-      id: 'PROD44',
-      designation: 'Lot de 10 Cahiers 200 Pages Grands Carreaux + 10 Stylos Bleus',
-      categorie: 'Papeterie',
-      prix_unitaire: 4000,
-      stock_disponible: 110,
-      photo_url: '/media/PROD44.webp'
-    },
-    {
-      id: 'PROD45',
-      designation: 'Registre Comptable Commerçant Rigide 300 Pages',
-      categorie: 'Papeterie',
-      prix_unitaire: 3000,
-      stock_disponible: 45,
-      photo_url: '/media/PROD45.webp'
-    }
-  ];
-
-  const insertArticle = db.prepare(`
-    INSERT INTO articles (id, designation, categorie, prix_unitaire, stock_disponible, photo_url, photo_hash_md5, is_active, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-  `);
-
-  for (const art of initialArticles) {
-    insertArticle.run(
-      art.id,
-      art.designation,
-      art.categorie,
-      art.prix_unitaire,
-      art.stock_disponible,
-      art.photo_url,
-      md5Hash(art.id + ':' + art.prix_unitaire),
+    // Commerçant 2 : Quincaillerie & Électro Liptako Dori (PIN / Mot de passe: 5678)
+    insertMerch.run(
+      'M-DORI',
+      'Faso Quincaillerie & Solaire (Dori)',
+      'Ousmane Dicko',
+      '+22676003344',
+      '+22676003344',
+      'Dori',
+      'Quincaillerie & Équipement Pro',
+      'FASO',
+      hashPassword('5678'),
       nowIso
     );
   }
 
-  // Clients initiaux (dont CL890 cité en exemple dans la fiche technique)
-  const insertClient = db.prepare(`
-    INSERT INTO clients (id, telephone, nom_complet, ville, secteur_quartier, point_repere, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
+  // 2. Peuplement des articles s'ils n'existent pas
+  const countRow = db.prepare('SELECT COUNT(*) as total FROM articles').get();
+  if (countRow && countRow.total === 0) {
+    const initialArticles = [
+      // Boutique 1 : M-SAHEL
+      { id: 'PROD01', commercant_id: 'M-SAHEL', designation: 'Kit Solaire Domestique 50W + Batterie Lithium + 3 Lampes LED', categorie: 'Solaire', prix_unitaire: 32500, stock_disponible: 25, photo_url: 'media/PROD01.webp' },
+      { id: 'PROD02', commercant_id: 'M-SAHEL', designation: 'Lampe Torche Solaire Rechargeable + Port USB Powerbank', categorie: 'Solaire', prix_unitaire: 4500, stock_disponible: 80, photo_url: 'media/PROD02.webp' },
+      { id: 'PROD03', commercant_id: 'M-SAHEL', designation: 'Panneau Solaire Monocristallin 150W 12V Haute Résilience', categorie: 'Solaire', prix_unitaire: 48000, stock_disponible: 14, photo_url: 'media/PROD03.webp' },
+      { id: 'PROD10', commercant_id: 'M-SAHEL', designation: 'Sac de Riz Brisure Parfumé 25 Kg', categorie: 'Consommables', prix_unitaire: 12500, stock_disponible: 120, photo_url: 'media/PROD10.webp' },
+      { id: 'PROD11', commercant_id: 'M-SAHEL', designation: 'Bidon Huile Alimentaire 5 Litres', categorie: 'Consommables', prix_unitaire: 5500, stock_disponible: 65, photo_url: 'media/PROD11.webp' },
+      { id: 'PROD12', commercant_id: 'M-SAHEL', designation: 'Carton de Savon de Ménage Local (24 Barres)', categorie: 'Consommables', prix_unitaire: 6000, stock_disponible: 50, photo_url: 'media/PROD12.webp' },
+      { id: 'PROD30', commercant_id: 'M-SAHEL', designation: 'Ventilateur Rechargeable 12V Solaire/Secteur Autonomie 10h', categorie: 'Petit électroménager', prix_unitaire: 21000, stock_disponible: 30, photo_url: 'media/PROD30.webp' },
+      { id: 'PROD44', commercant_id: 'M-SAHEL', designation: 'Lot de 10 Cahiers 200 Pages Grands Carreaux + 10 Stylos Bleus', categorie: 'Papeterie', prix_unitaire: 4000, stock_disponible: 110, photo_url: 'media/PROD44.webp' },
 
-  insertClient.run(
-    'CL890',
-    '+22670112233',
-    'Amadou Dicko',
-    'Gorom-Gorom',
-    'SEC3 (Secteur 3)',
-    'Près du Château d\'Eau',
-    nowIso
-  );
+      // Boutique 2 : M-DORI (Articles isolés pour le 2e commerçant)
+      { id: 'PROD20', commercant_id: 'M-DORI', designation: 'Cadenas Acier Blindé Anti-Poussière 60mm', categorie: 'Quincaillerie', prix_unitaire: 2500, stock_disponible: 90, photo_url: 'media/PROD20.webp' },
+      { id: 'PROD21', commercant_id: 'M-DORI', designation: 'Brouette Renforcée Chantier Cuve Galvanisée 90L', categorie: 'Quincaillerie', prix_unitaire: 24000, stock_disponible: 18, photo_url: 'media/PROD21.webp' },
+      { id: 'PROD22', commercant_id: 'M-DORI', designation: 'Caisse à Outils Métallique Complète (32 Pièces)', categorie: 'Quincaillerie', prix_unitaire: 18500, stock_disponible: 22, photo_url: 'media/PROD22.webp' },
+      { id: 'PROD31', commercant_id: 'M-DORI', designation: 'Bouilloire Électrique Inox Basse Consommation 1.8L', categorie: 'Petit électroménager', prix_unitaire: 6500, stock_disponible: 40, photo_url: 'media/PROD31.webp' },
+      { id: 'PROD32', commercant_id: 'M-DORI', designation: 'Radio Récepteur FM/SW/MW Rechargeable Solaire + Bluetooth', categorie: 'Petit électroménager', prix_unitaire: 7500, stock_disponible: 55, photo_url: 'media/PROD32.webp' },
+      { id: 'PROD45', commercant_id: 'M-DORI', designation: 'Registre Comptable Commerçant Rigide 300 Pages', categorie: 'Papeterie', prix_unitaire: 3000, stock_disponible: 45, photo_url: 'media/PROD45.webp' }
+    ];
 
-  insertClient.run(
-    'CL102',
-    '+22676445566',
-    'Fatoumata Maïga',
-    'Dori',
-    'SEC1 (Secteur 1 - Centre)',
-    'Face Grande Mosquée',
-    nowIso
-  );
+    const insertArt = db.prepare(`
+      INSERT INTO articles (id, commercant_id, designation, categorie, prix_unitaire, stock_disponible, photo_url, photo_hash_md5, is_active, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+    `);
+    for (const a of initialArticles) {
+      insertArt.run(a.id, a.commercant_id, a.designation, a.categorie, a.prix_unitaire, a.stock_disponible, a.photo_url, md5Hash(a.id + ':' + a.prix_unitaire), nowIso);
+    }
+  } else {
+    // S'assurer que les articles existants sont répartis sur les 2 commerçants de démo pour prouver l'isolation
+    db.prepare(`UPDATE articles SET commercant_id = 'M-DORI' WHERE id IN ('PROD20', 'PROD21', 'PROD22', 'PROD31', 'PROD32', 'PROD45')`).run();
+    db.prepare(`UPDATE articles SET commercant_id = 'M-SAHEL' WHERE commercant_id IS NULL OR commercant_id = ''`).run();
+  }
 
-  insertClient.run(
-    'CL205',
-    '+22661889900',
-    'Boureima Sawadogo',
-    'Sebba',
-    'SEC2 (Quartier Marché)',
-    'À côté de la gare routière',
-    nowIso
-  );
+  // S'assurer que les clients existants ont un numéro WhatsApp renseigné
+  db.prepare(`UPDATE clients SET whatsapp = telephone WHERE whatsapp IS NULL OR whatsapp = ''`).run();
 
-  // Commande de démonstration initiale
-  const demoOrderId = 'CMD-2026-001';
-  db.prepare(`
-    INSERT INTO commandes (id, client_id, total_fcfa, mode_transmission, mode_paiement, statut, adresse_livraison, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    demoOrderId,
-    'CL102',
-    37000,
-    'DATA_HTTPS',
-    'ORANGE_MONEY',
-    'EN_COURS',
-    'Dori - SEC1 (Secteur 1 - Centre) | Repère: Face Grande Mosquée',
-    nowIso
-  );
-
-  db.prepare(`
-    INSERT INTO lignes_commande (commande_id, article_id, quantite, prix_applique)
-    VALUES (?, ?, ?, ?)
-  `).run(demoOrderId, 'PROD01', 1, 32500);
-
-  db.prepare(`
-    INSERT INTO lignes_commande (commande_id, article_id, quantite, prix_applique)
-    VALUES (?, ?, ?, ?)
-  `).run(demoOrderId, 'PROD02', 1, 4500);
+  // Avis clients initiaux de démonstration
+  const avisCount = db.prepare('SELECT COUNT(*) as c FROM avis_clients').get().c;
+  if (avisCount === 0) {
+    const insertAvis = db.prepare(`
+      INSERT INTO avis_clients (commercant_id, article_id, client_id, client_nom, client_whatsapp, note, commentaire, suggestion_produit, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertAvis.run(
+      'M-SAHEL',
+      'PROD01',
+      'CL890',
+      'Amadou Dicko',
+      '+22670112233',
+      5,
+      'Le kit solaire 50W tient toute la nuit, très satisfait de la livraison au Secteur 3.',
+      'Pourriez-vous proposer des batteries solaires 100Ah seules ?',
+      nowIso
+    );
+    insertAvis.run(
+      'M-DORI',
+      'PROD21',
+      'CL102',
+      'Fatoumata Maïga',
+      '+22676445566',
+      5,
+      'Brouette très solide pour nos travaux.',
+      'Nous aimerions aussi commander des pelles et sacs de ciment.',
+      nowIso
+    );
+  }
 }
 
 initSchema();
@@ -313,5 +240,6 @@ seedInitialData();
 
 module.exports = {
   db,
-  md5Hash
+  md5Hash,
+  hashPassword
 };

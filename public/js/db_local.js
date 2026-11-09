@@ -1,30 +1,25 @@
 /**
- * SahelExpress - Gestionnaire de Base de Données Locale (IndexedDB)
- * Conforme au Chapitre 2 & 3.1 du Cahier des Charges :
- * - Stocke le catalogue complet localement pour navigation 100% hors-ligne
- * - Gère la synchronisation incrémentale par delta (hash + timestamp `updated_at`)
- * - Stocke le panier actif, le profil client et l'historique des commandes locales
+ * SahelExpress - Gestionnaire de Base de Données Locale (IndexedDB) Multi-Commerçants & Avis
  */
 
 const IDB_NAME = 'SahelExpressLocalDB';
-const IDB_VERSION = 1;
+const IDB_VERSION = 2;
 
-// Catalogue de secours embarqué dans le bundle pour garantir le 100% Offline dès la 1ère seconde
 const FALLBACK_EMBEDDED_CATALOG = [
-  { id: 'PROD01', designation: 'Kit Solaire Domestique 50W + Batterie Lithium + 3 Lampes LED', categorie: 'Solaire', prix_unitaire: 32500, stock_disponible: 25, photo_url: '/media/PROD01.webp', is_active: 1 },
-  { id: 'PROD02', designation: 'Lampe Torche Solaire Rechargeable + Port USB Powerbank', categorie: 'Solaire', prix_unitaire: 4500, stock_disponible: 80, photo_url: '/media/PROD02.webp', is_active: 1 },
-  { id: 'PROD03', designation: 'Panneau Solaire Monocristallin 150W 12V Haute Résilience', categorie: 'Solaire', prix_unitaire: 48000, stock_disponible: 14, photo_url: '/media/PROD03.webp', is_active: 1 },
-  { id: 'PROD10', designation: 'Sac de Riz Brisure Parfumé 25 Kg', categorie: 'Consommables', prix_unitaire: 12500, stock_disponible: 120, photo_url: '/media/PROD10.webp', is_active: 1 },
-  { id: 'PROD11', designation: 'Bidon Huile Alimentaire 5 Litres', categorie: 'Consommables', prix_unitaire: 5500, stock_disponible: 65, photo_url: '/media/PROD11.webp', is_active: 1 },
-  { id: 'PROD12', designation: 'Carton de Savon de Ménage Local (24 Barres)', categorie: 'Consommables', prix_unitaire: 6000, stock_disponible: 50, photo_url: '/media/PROD12.webp', is_active: 1 },
-  { id: 'PROD20', designation: 'Cadenas Acier Blindé Anti-Poussière 60mm', categorie: 'Quincaillerie', prix_unitaire: 2500, stock_disponible: 90, photo_url: '/media/PROD20.webp', is_active: 1 },
-  { id: 'PROD21', designation: 'Brouette Renforcée Chantier Cuve Galvanisée 90L', categorie: 'Quincaillerie', prix_unitaire: 24000, stock_disponible: 18, photo_url: '/media/PROD21.webp', is_active: 1 },
-  { id: 'PROD22', designation: 'Caisse à Outils Métallique Complète (32 Pièces)', categorie: 'Quincaillerie', prix_unitaire: 18500, stock_disponible: 22, photo_url: '/media/PROD22.webp', is_active: 1 },
-  { id: 'PROD30', designation: 'Ventilateur Rechargeable 12V Solaire/Secteur Autonomie 10h', categorie: 'Petit électroménager', prix_unitaire: 21000, stock_disponible: 30, photo_url: '/media/PROD30.webp', is_active: 1 },
-  { id: 'PROD31', designation: 'Bouilloire Électrique Inox Basse Consommation 1.8L', categorie: 'Petit électroménager', prix_unitaire: 6500, stock_disponible: 40, photo_url: '/media/PROD31.webp', is_active: 1 },
-  { id: 'PROD32', designation: 'Radio Récepteur FM/SW/MW Rechargeable Solaire + Bluetooth', categorie: 'Petit électroménager', prix_unitaire: 7500, stock_disponible: 55, photo_url: '/media/PROD32.webp', is_active: 1 },
-  { id: 'PROD44', designation: 'Lot de 10 Cahiers 200 Pages Grands Carreaux + 10 Stylos Bleus', categorie: 'Papeterie', prix_unitaire: 4000, stock_disponible: 110, photo_url: '/media/PROD44.webp', is_active: 1 },
-  { id: 'PROD45', designation: 'Registre Comptable Commerçant Rigide 300 Pages', categorie: 'Papeterie', prix_unitaire: 3000, stock_disponible: 45, photo_url: '/media/PROD45.webp', is_active: 1 }
+  { id: 'PROD01', commercant_id: 'M-SAHEL', nom_boutique: 'SahelExpress Centrale (Gorom-Gorom)', designation: 'Kit Solaire Domestique 50W + Batterie Lithium + 3 Lampes LED', categorie: 'Solaire', prix_unitaire: 32500, stock_disponible: 25, photo_url: 'media/PROD01.webp', is_active: 1 },
+  { id: 'PROD02', commercant_id: 'M-SAHEL', nom_boutique: 'SahelExpress Centrale (Gorom-Gorom)', designation: 'Lampe Torche Solaire Rechargeable + Port USB Powerbank', categorie: 'Solaire', prix_unitaire: 4500, stock_disponible: 80, photo_url: 'media/PROD02.webp', is_active: 1 },
+  { id: 'PROD03', commercant_id: 'M-SAHEL', nom_boutique: 'SahelExpress Centrale (Gorom-Gorom)', designation: 'Panneau Solaire Monocristallin 150W 12V Haute Résilience', categorie: 'Solaire', prix_unitaire: 48000, stock_disponible: 14, photo_url: 'media/PROD03.webp', is_active: 1 },
+  { id: 'PROD10', commercant_id: 'M-SAHEL', nom_boutique: 'SahelExpress Centrale (Gorom-Gorom)', designation: 'Sac de Riz Brisure Parfumé 25 Kg', categorie: 'Consommables', prix_unitaire: 12500, stock_disponible: 120, photo_url: 'media/PROD10.webp', is_active: 1 },
+  { id: 'PROD11', commercant_id: 'M-SAHEL', nom_boutique: 'SahelExpress Centrale (Gorom-Gorom)', designation: 'Bidon Huile Alimentaire 5 Litres', categorie: 'Consommables', prix_unitaire: 5500, stock_disponible: 65, photo_url: 'media/PROD11.webp', is_active: 1 },
+  { id: 'PROD12', commercant_id: 'M-SAHEL', nom_boutique: 'SahelExpress Centrale (Gorom-Gorom)', designation: 'Carton de Savon de Ménage Local (24 Barres)', categorie: 'Consommables', prix_unitaire: 6000, stock_disponible: 50, photo_url: 'media/PROD12.webp', is_active: 1 },
+  { id: 'PROD20', commercant_id: 'M-DORI', nom_boutique: 'Faso Quincaillerie & Solaire (Dori)', designation: 'Cadenas Acier Blindé Anti-Poussière 60mm', categorie: 'Quincaillerie', prix_unitaire: 2500, stock_disponible: 90, photo_url: 'media/PROD20.webp', is_active: 1 },
+  { id: 'PROD21', commercant_id: 'M-DORI', nom_boutique: 'Faso Quincaillerie & Solaire (Dori)', designation: 'Brouette Renforcée Chantier Cuve Galvanisée 90L', categorie: 'Quincaillerie', prix_unitaire: 24000, stock_disponible: 18, photo_url: 'media/PROD21.webp', is_active: 1 },
+  { id: 'PROD22', commercant_id: 'M-DORI', nom_boutique: 'Faso Quincaillerie & Solaire (Dori)', designation: 'Caisse à Outils Métallique Complète (32 Pièces)', categorie: 'Quincaillerie', prix_unitaire: 18500, stock_disponible: 22, photo_url: 'media/PROD22.webp', is_active: 1 },
+  { id: 'PROD30', commercant_id: 'M-SAHEL', nom_boutique: 'SahelExpress Centrale (Gorom-Gorom)', designation: 'Ventilateur Rechargeable 12V Solaire/Secteur Autonomie 10h', categorie: 'Petit électroménager', prix_unitaire: 21000, stock_disponible: 30, photo_url: 'media/PROD30.webp', is_active: 1 },
+  { id: 'PROD31', commercant_id: 'M-DORI', nom_boutique: 'Faso Quincaillerie & Solaire (Dori)', designation: 'Bouilloire Électrique Inox Basse Consommation 1.8L', categorie: 'Petit électroménager', prix_unitaire: 6500, stock_disponible: 40, photo_url: 'media/PROD31.webp', is_active: 1 },
+  { id: 'PROD32', commercant_id: 'M-DORI', nom_boutique: 'Faso Quincaillerie & Solaire (Dori)', designation: 'Radio Récepteur FM/SW/MW Rechargeable Solaire + Bluetooth', categorie: 'Petit électroménager', prix_unitaire: 7500, stock_disponible: 55, photo_url: 'media/PROD32.webp', is_active: 1 },
+  { id: 'PROD44', commercant_id: 'M-SAHEL', nom_boutique: 'SahelExpress Centrale (Gorom-Gorom)', designation: 'Lot de 10 Cahiers 200 Pages Grands Carreaux + 10 Stylos Bleus', categorie: 'Papeterie', prix_unitaire: 4000, stock_disponible: 110, photo_url: 'media/PROD44.webp', is_active: 1 },
+  { id: 'PROD45', commercant_id: 'M-DORI', nom_boutique: 'Faso Quincaillerie & Solaire (Dori)', designation: 'Registre Comptable Commerçant Rigide 300 Pages', categorie: 'Papeterie', prix_unitaire: 3000, stock_disponible: 45, photo_url: 'media/PROD45.webp', is_active: 1 }
 ];
 
 class LocalStore {
@@ -47,6 +42,9 @@ class LocalStore {
         }
         if (!db.objectStoreNames.contains('orders_history')) {
           db.createObjectStore('orders_history', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('reviews_local')) {
+          db.createObjectStore('reviews_local', { keyPath: 'id', autoIncrement: true });
         }
         if (!db.objectStoreNames.contains('meta')) {
           db.createObjectStore('meta', { keyPath: 'key' });
@@ -88,20 +86,27 @@ class LocalStore {
       req.onsuccess = async () => {
         const list = req.result || [];
         if (list.length === 0) {
-          // Si IndexedDB est vide au tout premier lancement hors-ligne, charger le catalogue embarqué
           await this.applyDeltaSync(FALLBACK_EMBEDDED_CATALOG, []);
           resolve(FALLBACK_EMBEDDED_CATALOG);
         } else {
-          resolve(list.filter((a) => Boolean(a.is_active)));
+          // Garantir que commercant_id et nom_boutique existent sur les anciens enregistrements
+          const enriched = list
+            .filter((a) => Boolean(a.is_active))
+            .map((a) => {
+              const fb = FALLBACK_EMBEDDED_CATALOG.find((f) => f.id === a.id);
+              return {
+                commercant_id: a.commercant_id || (fb ? fb.commercant_id : 'M-SAHEL'),
+                nom_boutique: a.nom_boutique || (fb ? fb.nom_boutique : 'SahelExpress Centrale'),
+                ...a
+              };
+            });
+          resolve(enriched);
         }
       };
       req.onerror = () => resolve(FALLBACK_EMBEDDED_CATALOG);
     });
   }
 
-  /**
-   * Applique la mise à jour incrémentale (nouveautés, changements de prix/stocks et suppressions)
-   */
   async applyDeltaSync(updatedArticles = [], deletedIds = []) {
     const db = await this.open();
     return new Promise((resolve, reject) => {
@@ -140,6 +145,8 @@ class LocalStore {
       } else {
         store.put({
           article_id: article.id,
+          commercant_id: article.commercant_id || 'M-SAHEL',
+          nom_boutique: article.nom_boutique || 'SahelExpress Centrale',
           designation: article.designation,
           categorie: article.categorie,
           prix_unitaire: article.prix_unitaire,
@@ -179,6 +186,25 @@ class LocalStore {
         list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
         resolve(list);
       };
+      req.onerror = () => resolve([]);
+    });
+  }
+
+  async saveLocalReview(review) {
+    const db = await this.open();
+    return new Promise((resolve) => {
+      const tx = db.transaction('reviews_local', 'readwrite');
+      tx.objectStore('reviews_local').put(review);
+      tx.oncomplete = () => resolve();
+    });
+  }
+
+  async getLocalReviews() {
+    const db = await this.open();
+    return new Promise((resolve) => {
+      const tx = db.transaction('reviews_local', 'readonly');
+      const req = tx.objectStore('reviews_local').getAll();
+      req.onsuccess = () => resolve(req.result || []);
       req.onerror = () => resolve([]);
     });
   }
