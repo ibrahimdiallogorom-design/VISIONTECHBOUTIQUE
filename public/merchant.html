@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>SahelExpress — Tableau de Bord Commerçant & Dispatch Livreur</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <!-- Bandeau supérieur Centrale Logistique -->
+  <div class="status-banner online no-print">
+    <div class="status-indicator">
+      <span class="status-dot"></span>
+      <span>Centrale Logistique SahelExpress — File Temps Réel Unifiée (Data HTTPS + Passerelle SMS)</span>
+    </div>
+    <div class="banner-actions">
+      <button type="button" class="btn-sim-offline" id="btn-refresh-dashboard">
+        🔄 Actualiser maintenant
+      </button>
+      <a href="/" class="btn-sim-offline" style="text-decoration:none;">
+        🛍️ Retour Boutique Acheteur
+      </a>
+    </div>
+  </div>
+
+  <!-- En-tête Tableau de Bord -->
+  <header class="app-header no-print">
+    <div class="brand-title">
+      <div class="brand-logo">🚚</div>
+      <div class="brand-text">
+        <h1>Gestion & Dispatch (Commerçant / Livreur)</h1>
+        <p>Réception Data + SMS • Appel Client 1-Clic • Impression Thermique 58mm/80mm • Stocks Delta</p>
+      </div>
+    </div>
+
+    <nav class="nav-tabs" aria-label="Navigation Commerçant">
+      <button type="button" class="tab-btn active" data-mtab="queue">
+        📋 File de Commandes (Temps Réel)
+      </button>
+      <button type="button" class="tab-btn" data-mtab="inventory">
+        📦 Stocks & Catalogue (Push Delta)
+      </button>
+      <button type="button" class="tab-btn" data-mtab="gateway">
+        📡 Simulateur Passerelle SMS
+      </button>
+    </nav>
+  </header>
+
+  <!-- Contenu principal -->
+  <main class="main-container no-print" id="merchant-view-root"></main>
+
+  <!-- Modale Bon de Livraison Thermique 58mm/80mm -->
+  <div id="merchant-modal-root"></div>
+
+  <script src="/js/merchant.js"></script>
+</body>
+</html>

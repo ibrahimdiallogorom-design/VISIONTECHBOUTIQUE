@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: sahelexpress-api-pwa
+    runtime: node
+    plan: free
+    buildCommand: echo "Zéro dépendance externe - Prêt pour exécution"
+    startCommand: node backend/server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 24.0.0
+      - key: LOGISTICS_SMS_NUMBER
+        value: "+22670001122"

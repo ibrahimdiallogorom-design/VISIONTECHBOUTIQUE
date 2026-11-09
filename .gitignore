@@ -1,0 +1,9 @@
+# Fichiers système et dépendances éventuelles
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+
+# Fichiers journaux SQLite temporaires (WAL/SHM)
+backend/data/*.db-wal
+backend/data/*.db-shm

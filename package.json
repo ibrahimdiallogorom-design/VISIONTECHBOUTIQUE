@@ -1,0 +1,13 @@
+{
+  "name": "sahelexpress",
+  "version": "1.0.0",
+  "description": "Plateforme E-Commerce Locale & Interurbaine Résiliente (Offline-First / SMS Fallback) - Sahel & Liptako",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "test:backend": "node backend/test_backend.js"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

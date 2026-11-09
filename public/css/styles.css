@@ -1,0 +1,800 @@
+/* ==========================================================================
+   SahelExpress — Feuille de Style Autonome (Chapitre 6.1 : Zéro Google Fonts)
+   Optimisée pour lisibilité en plein soleil et écrans Android d'entrée de gamme
+   ========================================================================== */
+
+:root {
+  --bg-main: #0f172a;
+  --bg-card: #1e293b;
+  --bg-elevated: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --accent-amber: #f59e0b;
+  --accent-amber-dark: #d97706;
+  --online-green: #10b981;
+  --online-bg: rgba(16, 185, 129, 0.16);
+  --offline-orange: #f97316;
+  --offline-bg: rgba(249, 115, 22, 0.18);
+  --danger-red: #ef4444;
+  --border-color: #334155;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  line-height: 1.45;
+  padding-bottom: 90px;
+}
+
+/* Bandeau d'état réseau en haut (Exigence 5.1) */
+.status-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.status-banner.online {
+  background-color: #064e3b;
+  color: #a7f3d0;
+  border-bottom-color: var(--online-green);
+}
+
+.status-banner.offline {
+  background-color: #7c2d12;
+  color: #fed7aa;
+  border-bottom-color: var(--offline-orange);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.online .status-dot {
+  background-color: #34d399;
+  box-shadow: 0 0 8px #34d399;
+}
+
+.offline .status-dot {
+  background-color: #fb923c;
+  box-shadow: 0 0 8px #fb923c;
+}
+
+.banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-sim-offline {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-sim-offline:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* En-tête principal */
+.app-header {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.brand-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent-amber), #ea580c);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.brand-text h1 {
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.brand-text p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab-btn {
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  padding: 9px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-btn.active {
+  background: var(--accent-amber);
+  color: #0f172a;
+  border-color: var(--accent-amber);
+  font-weight: 700;
+}
+
+.cart-badge {
+  background: #0f172a;
+  color: var(--accent-amber);
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.tab-btn.active .cart-badge {
+  background: #0f172a;
+  color: #fff;
+}
+
+/* Conteneur principal */
+.main-container {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* Barre de recherche & Filtres Catégories */
+.controls-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.search-box {
+  position: relative;
+  width: 100%;
+}
+
+.search-input {
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 0.98rem;
+}
+
+.search-input:focus {
+  outline: 2px solid var(--accent-amber);
+  border-color: transparent;
+}
+
+.category-pills {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.cat-pill {
+  white-space: nowrap;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cat-pill.active {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--accent-amber);
+  border-color: var(--accent-amber);
+}
+
+/* Grille Catalogue Produits */
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.product-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.product-card:hover {
+  border-color: var(--accent-amber);
+}
+
+.product-thumb {
+  height: 120px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #1e293b, #0f172a);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  position: relative;
+}
+
+.thumb-icon {
+  font-size: 2.6rem;
+}
+
+.thumb-meta {
+  text-align: right;
+}
+
+.product-code {
+  display: inline-block;
+  background: var(--bg-elevated);
+  color: var(--accent-amber);
+  font-family: monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.product-cat-tag {
+  display: block;
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.product-title {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.product-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.price-fcfa {
+  font-size: 1.18rem;
+  font-weight: 800;
+  color: var(--accent-amber);
+}
+
+.stock-badge {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--online-bg);
+  color: #34d399;
+  font-weight: 600;
+}
+
+.stock-badge.low {
+  background: var(--offline-bg);
+  color: #fb923c;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent-amber);
+  color: #0f172a;
+  font-weight: 800;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: var(--accent-amber-dark);
+  color: #fff;
+}
+
+.qty-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: var(--bg-main);
+  border: 1px solid var(--accent-amber);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.qty-btn {
+  width: 34px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: var(--bg-elevated);
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.qty-val {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--accent-amber);
+}
+
+/* Vue Panier & Choix de Livraison (Chapitre 5.1) */
+.checkout-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 820px) {
+  .checkout-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+}
+
+.panel-card h2 {
+  font-size: 1.12rem;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 10px;
+}
+
+.cart-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 10px;
+}
+
+.cart-item-info h4 {
+  font-size: 0.92rem;
+  color: var(--text-primary);
+}
+
+.cart-item-info small {
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.cart-summary-total {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 2px dashed var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.cart-summary-total span:last-child {
+  color: var(--accent-amber);
+}
+
+/* Formulaire de Livraison */
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+}
+
+.form-control {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-main);
+  color: var(--text-primary);
+  font-size: 0.94rem;
+}
+
+.sms-preview-box {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #090d16;
+  border: 1px solid var(--offline-orange);
+}
+
+.sms-preview-box small {
+  display: block;
+  color: #fb923c;
+  font-weight: 700;
+  font-size: 0.76rem;
+  margin-bottom: 4px;
+}
+
+.sms-code-line {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #fde68a;
+  word-break: break-all;
+}
+
+/* Modal Fiche Produit & Résultat Envoi */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 2000;
+}
+
+.modal-box {
+  background: var(--bg-card);
+  border: 1px solid var(--accent-amber);
+  border-radius: var(--radius-lg);
+  max-width: 520px;
+  width: 100%;
+  padding: 20px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.btn-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+/* Barre flottante Panier en bas */
+.bottom-cart-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #111827;
+  border-top: 2px solid var(--accent-amber);
+  padding: 12px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 990;
+}
+
+.bottom-cart-info {
+  font-size: 0.92rem;
+}
+
+.bottom-cart-info strong {
+  color: var(--accent-amber);
+  font-size: 1.08rem;
+}
+
+
+/* ==========================================================================
+   Module Gestion & Dispatch (Tableau de Bord Commerçant / Livreur - Étape 3)
+   + Impression Thermique 58mm / 80mm
+   ========================================================================== */
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+}
+
+.kpi-card small {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.kpi-card .kpi-value {
+  font-size: 1.5rem;
+  font-weight: 900;
+  margin-top: 4px;
+  color: var(--text-primary);
+}
+
+.orders-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.order-dispatch-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left: 5px solid var(--accent-amber);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.order-dispatch-card.channel-SMS {
+  border-left-color: #f97316;
+}
+
+.order-dispatch-card.channel-DATA_HTTPS {
+  border-left-color: #10b981;
+}
+
+.order-dispatch-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding-bottom: 10px;
+}
+
+.badge-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.badge-channel.SMS {
+  background: rgba(249, 115, 22, 0.2);
+  color: #fb923c;
+  border: 1px solid #f97316;
+}
+
+.badge-channel.DATA_HTTPS,
+.badge-channel.LOCAL_WIFI {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid #10b981;
+}
+
+.badge-statut {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.badge-statut.RECUE {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.badge-statut.EN_COURS {
+  background: rgba(59, 130, 246, 0.22);
+  color: #60a5fa;
+}
+
+.badge-statut.LIVREE {
+  background: rgba(16, 185, 129, 0.22);
+  color: #34d399;
+}
+
+.badge-statut.ANNULEE {
+  background: rgba(239, 68, 68, 0.22);
+  color: #f87171;
+}
+
+.dispatch-actions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.btn-call-client {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #059669;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.btn-call-client:hover {
+  background: #047857;
+}
+
+.btn-print-slip {
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.btn-print-slip:hover {
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
+}
+
+/* Bon de Livraison / Préparation Thermique 58mm & 80mm */
+.thermal-slip-wrapper {
+  background: #ffffff;
+  color: #000000;
+  font-family: "Courier New", Courier, monospace;
+  margin: 0 auto;
+  padding: 14px;
+  border-radius: 4px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.thermal-slip-wrapper.width-58mm {
+  width: 240px;
+  font-size: 11px;
+}
+
+.thermal-slip-wrapper.width-80mm {
+  width: 310px;
+  font-size: 12px;
+}
+
+.thermal-center {
+  text-align: center;
+}
+
+.thermal-divider {
+  border-top: 1px dashed #000;
+  margin: 8px 0;
+}
+
+.thermal-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.thermal-table th,
+.thermal-table td {
+  text-align: left;
+  padding: 3px 0;
+  vertical-align: top;
+}
+
+.thermal-table .right {
+  text-align: right;
+}
+
+/* Règle d'impression dédiée aux imprimantes thermiques 58mm/80mm */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #thermal-print-area,
+  #thermal-print-area * {
+    visibility: visible;
+  }
+  #thermal-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: #fff;
+    color: #000;
+    box-shadow: none;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
