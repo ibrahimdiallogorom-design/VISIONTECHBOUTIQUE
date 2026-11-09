@@ -1,14 +1,8 @@
-[
-  {
-    "relation": [
-      "delegate_permission/common.handle_all_urls"
-    ],
-    "target": {
-      "namespace": "android_app",
-      "package_name": "io.github.ibrahimdiallogorom_design.twa",
-      "sha256_cert_fingerprints": [
-        "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
-      ]
-    }
-  }
-]
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.sahelexpress.boutique",
+        "sha256_cert_fingerprints": ["B4:A8:B8:E1:30:A8:AC:80:2E:99:17:76:0F:9B:50:3E:51:12:39:6E:82:FB:EB:0B:49:C0:C4:1F:E6:0A:84:F0"]
+      }
+    }]
