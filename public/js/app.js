@@ -474,6 +474,9 @@ function renderStatusBanner() {
              </span>`
           : ''
       }
+      <button type="button" class="btn-sim-offline" id="btn-force-update" title="Télécharger la dernière mise à jour en ligne">
+        🔄 Mettre à jour l'App
+      </button>
       <button type="button" class="btn-sim-offline" id="btn-toggle-offline">
         ${
           state.simulatedOffline
@@ -488,6 +491,16 @@ function renderStatusBanner() {
     state.simulatedOffline = !state.simulatedOffline;
     renderApp();
   };
+  const btnForceUp = document.getElementById('btn-force-update');
+  if (btnForceUp) {
+    btnForceUp.onclick = () => {
+      if (window.forceUpdateSahelApp) {
+        window.forceUpdateSahelApp();
+      } else {
+        window.location.reload();
+      }
+    };
+  }
 }
 
 function renderCatalogView() {

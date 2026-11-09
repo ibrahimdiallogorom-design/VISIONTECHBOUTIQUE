@@ -1,13 +1,14 @@
 /**
- * SahelExpress - Service Worker Résilient v4 (Score Maximal PWABuilder & APK Android TWA)
- * - Stratégie CacheFirst pour les images (.webp, .png) et le shell applicatif
- * - Stratégie NetworkFirstWithFallbackToCache pour les données API
- * - Support complet : Offline Navigation, Background Sync, Periodic Sync, Push Notifications & Message SkipWaiting
+ * SahelExpress - Service Worker Résilient v6 (Mise à Jour Automatique Instantanée + Mode 100% Hors-Ligne)
+ * - Stratégie NetworkFirst (Réseau d'abord, puis Cache Hors-Ligne) pour HTML, JS, CSS, JSON et API :
+ *   => Garantit que l'APK Android installé reçoit AUTOMATIQUEMENT et INSTANTANÉMENT toutes les mises à jour
+ *      publiées sur GitHub Pages dès que le téléphone a Internet, sans jamais reconstruire l'APK !
+ *   => Garantit que sans Internet, l'application s'ouvre instantanément depuis la mémoire du téléphone.
  */
 
-const SHELL_CACHE_NAME = 'sahelexpress-shell-v5';
-const MEDIA_CACHE_NAME = 'sahelexpress-media-v5';
-const API_CACHE_NAME = 'sahelexpress-api-v5';
+const SHELL_CACHE_NAME = 'sahelexpress-shell-v6';
+const MEDIA_CACHE_NAME = 'sahelexpress-media-v6';
+const API_CACHE_NAME = 'sahelexpress-api-v6';
 
 const APP_SHELL_ASSETS = [
   './',
@@ -33,41 +34,85 @@ const APP_SHELL_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(SHELL_CACHE_NAME).then(async (cache) => {
       for (const asset of APP_SHELL_ASSETS) {
         try {
-          await cache.add(asset);
+          await cache.add(new Request(asset, { cache: 'reload' }));
         } catch {}
       }
     })
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   const allowedCaches = [SHELL_CACHE_NAME, MEDIA_CACHE_NAME, API_CACHE_NAME];
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.map((key) => {
-          if (!allowedCaches.includes(key)) {
-            return caches.delete(key);
-          }
-        })
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys.map((key) => {
+            if (!allowedCaches.includes(key)) {
+              return caches.delete(key);
+            }
+          })
+        )
       )
-    )
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+  if (event.data && event.data.type === 'CLEAR_ALL_CACHES') {
+    event.waitUntil(
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+    );
+  }
 });
 
-async function cacheFirst(request, cacheName) {
+/**
+ * Stratégie Réseau d'Abord (Network-First) avec mise à jour du cache et secours Hors-Ligne
+ * C'est cette stratégie qui permet à l'APK installé de toujours charger la dernière mise à jour en ligne !
+ */
+async function networkFirstAppShell(request, cacheName) {
+  try {
+    const freshRequest = new Request(request.url, {
+      method: request.method,
+      headers: request.headers,
+      cache: 'no-cache'
+    });
+    const networkResponse = await fetch(freshRequest);
+    if (networkResponse && networkResponse.status === 200) {
+      const cache = await caches.open(cacheName);
+      cache.put(request, networkResponse.clone());
+      return networkResponse;
+    }
+  } catch {
+    // Pas d'Internet : on bascule sur la copie stockée dans le téléphone
+  }
+
+  const cachedResponse = await caches.match(request, { ignoreSearch: true });
+  if (cachedResponse) {
+    return cachedResponse;
+  }
+
+  const fallbackIndex = await caches.match('./index.html', { ignoreSearch: true });
+  if (fallbackIndex) {
+    return fallbackIndex;
+  }
+
+  return new Response('Mode Hors-Ligne SahelExpress Actif', {
+    status: 200,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+  });
+}
+
+async function cacheFirstMedia(request, cacheName) {
   const cachedResponse = await caches.match(request, { ignoreSearch: true });
   if (cachedResponse) {
     return cachedResponse;
@@ -80,18 +125,11 @@ async function cacheFirst(request, cacheName) {
     }
     return networkResponse;
   } catch {
-    const fallbackIndex = await caches.match('./index.html', { ignoreSearch: true });
-    if (fallbackIndex) {
-      return fallbackIndex;
-    }
-    return new Response('Mode Hors-Ligne SahelExpress Actif', {
-      status: 200,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-    });
+    return new Response('', { status: 404 });
   }
 }
 
-async function networkFirstWithFallbackToCache(request, cacheName) {
+async function networkFirstApi(request, cacheName) {
   try {
     const networkResponse = await fetch(request);
     if (networkResponse && networkResponse.status === 200) {
@@ -125,8 +163,8 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  if (url.pathname.includes('/api/catalog/sync') || url.pathname.includes('/api/health')) {
-    event.respondWith(networkFirstWithFallbackToCache(request, API_CACHE_NAME));
+  if (url.pathname.includes('/api/')) {
+    event.respondWith(networkFirstApi(request, API_CACHE_NAME));
     return;
   }
 
@@ -135,10 +173,12 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('.webp') ||
     url.pathname.endsWith('.png')
   ) {
-    event.respondWith(cacheFirst(request, MEDIA_CACHE_NAME));
+    event.respondWith(cacheFirstMedia(request, MEDIA_CACHE_NAME));
     return;
   }
 
+  // Tous les fichiers de code (.html, .js, .css, .json) utilisent Network-First
+  // pour que chaque mise à jour soit reçue immédiatement dans l'APK installé !
   if (
     url.origin === self.location.origin &&
     (request.mode === 'navigate' ||
@@ -148,7 +188,7 @@ self.addEventListener('fetch', (event) => {
       url.pathname.endsWith('.js') ||
       url.pathname.endsWith('.json'))
   ) {
-    event.respondWith(cacheFirst(request, SHELL_CACHE_NAME));
+    event.respondWith(networkFirstAppShell(request, SHELL_CACHE_NAME));
   }
 });
 
@@ -165,7 +205,7 @@ self.addEventListener('periodicsync', (event) => {
   }
 });
 
-// Push Notifications & Notification Click (Validés par PWABuilder Service Worker Capabilities)
+// Push Notifications & Notification Click
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.text() : 'Mise a jour du catalogue SahelExpress disponible !';
   event.waitUntil(

@@ -415,3 +415,55 @@ class LocalStore {
 }
 
 window.SahelLocalStore = new LocalStore();
+
+/**
+ * Force la recherche et l'application immédiate des mises à jour en ligne dans l'APK installé
+ */
+window.forceUpdateSahelApp = async function () {
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        await reg.update();
+        if (reg.waiting) {
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+      }
+    }
+  } catch {}
+  window.location.reload();
+};
+
+// Vérification automatique des mises à jour à chaque ouverture de l'application (APK ou navigateur)
+if ('serviceWorker' in navigator) {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
+
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        reg.update();
+      }
+    } catch {}
+  });
+
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible') {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) reg.update();
+      } catch {}
+    }
+  });
+}
+
