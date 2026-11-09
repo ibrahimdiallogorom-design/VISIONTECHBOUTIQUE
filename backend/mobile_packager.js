@@ -1,13 +1,17 @@
 /**
- * SahelExpress - Générateur d'Icônes PNG valides (192x192 et 512x512) pour l'installation PWA Android / iOS
- * et Générateur du fichier autonome `SahelExpress-Mobile-Offline.html` partageable par Bluetooth / WhatsApp.
+ * SahelExpress - Générateur d'Assets PWA & APK (PWABuilder 100% Compatible)
+ * Génère :
+ * - media/icon-192.png (192x192 PNG RGBA)
+ * - media/icon-512.png (512x512 PNG RGBA)
+ * - media/screenshot-mobile.png (540x720 PNG RGBA exigé par PWABuilder)
+ * - media/screenshot-wide.png (1280x720 PNG RGBA exigé par PWABuilder)
+ * - SahelExpress-Mobile-Offline.html (Fichier portable autonome Bluetooth/WhatsApp)
  */
 
 const zlib = require('node:zlib');
 const fs = require('node:fs');
 const path = require('node:path');
 
-// Table CRC32 standard pour le format PNG
 const crcTable = new Uint32Array(256);
 for (let n = 0; n < 256; n++) {
   let c = n;
@@ -35,40 +39,36 @@ function makePngChunk(type, data) {
   return Buffer.concat([len, typeBuf, data, crcBuf]);
 }
 
-/**
- * Crée une icône PNG valide de taille width x height aux couleurs SahelExpress (Ambre #F59E0B sur fond Nuit #0F172A)
- */
-function generateSahelIconPng(size) {
+function generatePngImage(width, height) {
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0);
-  ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; // 8 bits par canal
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // 8-bit
   ihdr[9] = 6; // RGBA
   ihdr[10] = 0;
   ihdr[11] = 0;
   ihdr[12] = 0;
 
-  const rawData = Buffer.alloc(size * (size * 4 + 1));
-  const margin = Math.floor(size * 0.14);
+  const rawData = Buffer.alloc(height * (width * 4 + 1));
+  const marginX = Math.floor(width * 0.12);
+  const marginY = Math.floor(height * 0.12);
 
-  for (let y = 0; y < size; y++) {
-    const rowStart = y * (size * 4 + 1);
-    rawData[rowStart] = 0; // filtre None
-    for (let x = 0; x < size; x++) {
+  for (let y = 0; y < height; y++) {
+    const rowStart = y * (width * 4 + 1);
+    rawData[rowStart] = 0;
+    for (let x = 0; x < width; x++) {
       const px = rowStart + 1 + x * 4;
-      const insideBadge =
-        x >= margin && x < size - margin && y >= margin && y < size - margin;
+      const insideCard =
+        x >= marginX && x < width - marginX && y >= marginY && y < height - marginY;
 
-      if (insideBadge) {
-        // Dégradé Ambre Sahel (#F59E0B -> #EA580C)
+      if (insideCard) {
         rawData[px] = 245;
-        rawData[px + 1] = Math.max(90, 158 - Math.floor((y / size) * 60));
+        rawData[px + 1] = Math.max(90, 158 - Math.floor((y / height) * 60));
         rawData[px + 2] = 11;
         rawData[px + 3] = 255;
       } else {
-        // Fond #0F172A
         rawData[px] = 15;
         rawData[px + 1] = 23;
         rawData[px + 2] = 42;
@@ -94,13 +94,15 @@ function buildMobileAssets() {
     fs.mkdirSync(mediaDir, { recursive: true });
   }
 
-  // 1. Génération des icônes PNG 192x192 et 512x512 pour Android PWA Install
-  fs.writeFileSync(path.join(mediaDir, 'icon-192.png'), generateSahelIconPng(192));
-  fs.writeFileSync(path.join(mediaDir, 'icon-512.png'), generateSahelIconPng(512));
+  // Icônes 192x192 et 512x512
+  fs.writeFileSync(path.join(mediaDir, 'icon-192.png'), generatePngImage(192, 192));
+  fs.writeFileSync(path.join(mediaDir, 'icon-512.png'), generatePngImage(512, 512));
 
-  // 2. Génération du fichier unique portable `SahelExpress-Mobile-Offline.html`
-  // Ce fichier embarque tout le CSS, IndexedDB et le contrôleur JS en un seul fichier .html (< 45 Ko)
-  // que les habitants du Sahel peuvent s'envoyer par Bluetooth, Xender ou WhatsApp et ouvrir hors-ligne !
+  // Captures d'écran exigées par PWABuilder pour la génération APK sans avertissement
+  fs.writeFileSync(path.join(mediaDir, 'screenshot-mobile.png'), generatePngImage(540, 720));
+  fs.writeFileSync(path.join(mediaDir, 'screenshot-wide.png'), generatePngImage(1280, 720));
+
+  // Fichier portable autonome
   const css = fs.readFileSync(path.join(publicDir, 'css', 'styles.css'), 'utf8');
   const dbLocalJs = fs.readFileSync(path.join(publicDir, 'js', 'db_local.js'), 'utf8');
   const appJs = fs.readFileSync(path.join(publicDir, 'js', 'app.js'), 'utf8');
@@ -137,6 +139,7 @@ function buildMobileAssets() {
     <nav class="nav-tabs" aria-label="Navigation Acheteur">
       <button type="button" class="tab-btn active" data-tab="catalog">📦 Catalogue</button>
       <button type="button" class="tab-btn" data-tab="cart">🛒 Panier <span id="nav-cart-badge" class="cart-badge">0</span></button>
+      <button type="button" class="tab-btn" data-tab="reviews">⭐ Avis & Suggestions</button>
       <button type="button" class="tab-btn" data-tab="history">📜 Mes Commandes</button>
     </nav>
   </header>

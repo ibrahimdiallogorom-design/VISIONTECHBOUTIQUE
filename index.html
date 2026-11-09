@@ -7,7 +7,16 @@
   <meta name="description" content="SahelExpress — Plateforme E-Commerce Locale & Interurbaine Résiliente (Offline-First / SMS Fallback) pour le Sahel & Liptako." />
   <title>SahelExpress — Boutique Résiliente (Sahel & Liptako)</title>
   <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="media/icon-192.png" />
+  <link rel="apple-touch-icon" href="media/icon-192.png" />
   <link rel="stylesheet" href="css/styles.css" />
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function () {});
+      });
+    }
+  </script>
 </head>
 <body>
   <!-- Bandeau d'état réseau en haut : Mode En Ligne / Mode Hors-Ligne (Chapitre 5.1) -->
