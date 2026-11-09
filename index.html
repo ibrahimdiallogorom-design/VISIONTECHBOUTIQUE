@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <meta name="theme-color" content="#d97706" />
+  <meta name="description" content="SahelExpress — Plateforme E-Commerce Locale & Interurbaine Résiliente (Offline-First / SMS Fallback) pour le Sahel & Liptako." />
+  <title>SahelExpress — Boutique Résiliente (Sahel & Liptako)</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Bandeau d'état réseau en haut : Mode En Ligne / Mode Hors-Ligne (Chapitre 5.1) -->
+  <div id="network-status-banner" class="status-banner online">
+    <div class="status-indicator">
+      <span class="status-dot"></span>
+      <span>Initialisation du mode Offline-First...</span>
+    </div>
+  </div>
+
+  <!-- En-tête de l'application Acheteur -->
+  <header class="app-header">
+    <div class="brand-title">
+      <div class="brand-logo">SE</div>
+      <div class="brand-text">
+        <h1>SahelExpress</h1>
+        <p>Gorom-Gorom • Dori • Sebba • Markoye (100% Hors-Ligne & SMS)</p>
+      </div>
+    </div>
+
+    <nav class="nav-tabs" aria-label="Navigation Acheteur">
+      <button type="button" class="tab-btn active" data-tab="catalog">
+        📦 Catalogue
+      </button>
+      <button type="button" class="tab-btn" data-tab="cart">
+        🛒 Panier <span id="nav-cart-badge" class="cart-badge">0</span>
+      </button>
+      <button type="button" class="tab-btn" data-tab="history">
+        📜 Mes Commandes
+      </button>
+      <a href="install.html" class="tab-btn" style="text-decoration:none; background:#10b981; color:#052e16; border-color:#10b981; font-weight:800;">
+        📲 Installer sur Téléphone
+      </a>
+      <a href="merchant.html" class="tab-btn" style="text-decoration:none; border-color:var(--accent-amber); color:var(--accent-amber);">
+        🚚 Espace Commerçant / Livreur
+      </a>
+    </nav>
+  </header>
+
+  <!-- Zone d'affichage dynamique (Catalogue / Panier / Historique) -->
+  <main class="main-container" id="app-view-root"></main>
+
+  <!-- Barre flottante de résumé panier -->
+  <div id="bottom-cart-bar" class="bottom-cart-bar" style="display: none;"></div>
+
+  <!-- Conteneur des fenêtres modales (Fiche Produit / Confirmation SMS) -->
+  <div id="modal-root"></div>
+
+  <!-- Scripts autonomes (0 dépendance externe) -->
+  <script src="js/db_local.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

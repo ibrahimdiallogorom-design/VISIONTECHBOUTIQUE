@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#d97706" />
+  <title>Installer SahelExpress sur Téléphone (Android & iPhone)</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="media/icon-192.png" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="status-banner online">
+    <div class="status-indicator">
+      <span class="status-dot"></span>
+      <span>Centre d'Installation Mobile SahelExpress (Android • iOS • Partage Bluetooth/WhatsApp)</span>
+    </div>
+    <div class="banner-actions">
+      <a href="index.html" class="btn-sim-offline" style="text-decoration:none;">🛍️ Ouvrir la Boutique</a>
+      <a href="merchant.html" class="btn-sim-offline" style="text-decoration:none;">🚚 Espace Commerçant</a>
+    </div>
+  </div>
+
+  <header class="app-header">
+    <div class="brand-title">
+      <div class="brand-logo">📲</div>
+      <div class="brand-text">
+        <h1>Installer SahelExpress sur les Téléphones</h1>
+        <p>Application Légère (&lt; 50 Ko) • Fonctionne 100% Hors-Ligne • Bascule SMS Automatique</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <div class="checkout-grid">
+      <!-- Option 1 : Installation directe PWA sur l'écran d'accueil -->
+      <div class="panel-card" style="border-color: var(--accent-amber);">
+        <h2>1️⃣ Installation Directe sur ce Téléphone (PWA)</h2>
+        <p style="font-size:0.92rem; color:var(--text-secondary); margin-bottom:16px;">
+          Installez l'application <strong>SahelExpress</strong> directement sur l'écran d'accueil de votre téléphone. Une fois installée, elle s'ouvre en plein écran comme une application native et fonctionne même sans aucune carte SIM data ni connexion Internet.
+        </p>
+
+        <button
+          type="button"
+          id="btn-native-install"
+          class="btn-primary"
+          style="padding:14px; font-size:1.05rem; margin-bottom:14px;"
+        >
+          📲 Installer l'Application SahelExpress sur l'Écran d'Accueil
+        </button>
+
+        <div id="install-status-msg" style="padding:12px; border-radius:10px; background:var(--bg-main); border:1px solid var(--border-color); font-size:0.86rem; color:var(--text-secondary);">
+          <strong>Guide rapide selon votre téléphone :</strong>
+          <ul style="margin-top:8px; padding-left:18px; line-height:1.6;">
+            <li><strong>Sur Android (Chrome / Samsung Internet) :</strong> Appuyez sur le bouton jaune ci-dessus ou ouvrez le menu <strong>⋮ (3 points en haut à droite)</strong> puis choisissez <strong>« Installer l'application »</strong> ou <strong>« Ajouter à l'écran d'accueil »</strong>.</li>
+            <li><strong>Sur iPhone (Safari) :</strong> Appuyez sur le bouton <strong>Partager (carré avec flèche vers le haut)</strong> en bas de l'écran, puis sur <strong>« Sur l'écran d'accueil »</strong>.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Option 2 : Fichier Portable Autonome (Bluetooth / WhatsApp / Xender) -->
+      <div class="panel-card">
+        <h2>2️⃣ Fichier Mobile Portable (Partage Bluetooth / WhatsApp)</h2>
+        <p style="font-size:0.92rem; color:var(--text-secondary); margin-bottom:16px;">
+          Dans les localités du Sahel (Gorom-Gorom, Dori, Sebba) où un client n'a pas d'accès au serveur pour la première connexion, téléchargez ce <strong>fichier d'application autonome unique (42 Ko)</strong> et envoyez-le d'un téléphone à un autre par <strong>Bluetooth, WhatsApp, Xender ou Carte SD</strong> !
+        </p>
+
+        <a
+          href="SahelExpress-Mobile-Offline.html"
+          download="SahelExpress-Mobile-Offline.html"
+          class="btn-primary"
+          style="display:block; text-align:center; text-decoration:none; padding:14px; font-size:1rem; background:#10b981; color:#062e22; margin-bottom:14px;"
+        >
+          📥 Télécharger le Fichier App Autonome (SahelExpress-Mobile-Offline.html)
+        </a>
+
+        <div class="sms-preview-box" style="border-color:#10b981;">
+          <small style="color:#34d399;">✅ AVANTAGES DU FICHIER PORTABLE AUTONOME :</small>
+          <ul style="font-size:0.84rem; color:#d1fae5; padding-left:18px; margin-top:6px; line-height:1.5;">
+            <li>Contient déjà tout le catalogue de produits, les prix en FCFA et le panier hors-ligne.</li>
+            <li>S'ouvre en 1 clic sur n'importe quel téléphone Android (même ancien) sans connexion Internet.</li>
+            <li>Génère et envoie automatiquement les commandes par SMS compacté (<code>CMD#...</code>) vers la centrale logistique.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option 3 : Connexion des téléphones via Wi-Fi Local / Point d'accès -->
+    <div class="panel-card" style="margin-top:20px;">
+      <h2>3️⃣ Connecter les Téléphones en Wi-Fi Local (Point d'Accès / Starlink)</h2>
+      <p style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:14px;">
+        Si vos téléphones sont connectés au même Wi-Fi ou au partage de connexion de cet ordinateur, tapez l'une des adresses suivantes dans le navigateur du téléphone pour installer l'application et synchroniser le catalogue en direct :
+      </p>
+      <div id="lan-urls-list" class="kpi-grid"></div>
+    </div>
+  </main>
+
+  <script>
+    let deferredPrompt = null;
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const btn = document.getElementById('btn-native-install');
+      if (btn) {
+        btn.textContent = '📲 Installer Maintenant SahelExpress (1 Clic)';
+      }
+    });
+
+    document.getElementById('btn-native-install').addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          document.getElementById('install-status-msg').innerHTML =
+            '<strong style="color:#34d399;">✅ Application installée avec succès sur votre écran d\'accueil !</strong>';
+        }
+        deferredPrompt = null;
+      } else {
+        alert(
+          "Pour ajouter SahelExpress sur l'écran d'accueil de votre téléphone :\n\n" +
+          "• Sur Android (Chrome) : Appuyez sur le menu ⋮ (en haut à droite) -> 'Installer l'application' ou 'Ajouter à l'écran d'accueil'.\n" +
+          "• Sur iPhone (Safari) : Appuyez sur 'Partager' -> 'Sur l'écran d'accueil'."
+        );
+      }
+    });
+
+    // Récupère les adresses IP locales du serveur pour les afficher clairement
+    fetch('/api/mobile-info')
+      .then((r) => r.json())
+      .then((info) => {
+        const container = document.getElementById('lan-urls-list');
+        if (!container || !info.lan_urls) return;
+        container.innerHTML = info.lan_urls
+          .map(
+            (u) => `
+            <div class="kpi-card" style="border-color:var(--accent-amber);">
+              <small>Adresse Wi-Fi Local à taper sur le téléphone :</small>
+              <div class="kpi-value" style="font-size:1.15rem; font-family:monospace; color:var(--accent-amber); margin-top:6px;">
+                ${u}
+              </div>
+            </div>
+          `
+          )
+          .join('');
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>
