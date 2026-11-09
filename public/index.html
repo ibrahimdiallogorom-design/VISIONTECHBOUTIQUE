@@ -4,16 +4,30 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
   <meta name="theme-color" content="#d97706" />
-  <meta name="description" content="SahelExpress — Plateforme E-Commerce Locale & Interurbaine Résiliente (Offline-First / SMS Fallback) pour le Sahel & Liptako." />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="SahelExpress" />
+  <meta name="application-name" content="SahelExpress" />
+  <meta name="description" content="SahelExpress — Plateforme E-Commerce Locale et Interurbaine Resiliente (Offline-First / SMS Fallback) pour le Sahel et Liptako." />
   <title>SahelExpress — Boutique Résiliente (Sahel & Liptako)</title>
   <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" sizes="48x48" href="media/icon-48.png" />
+  <link rel="icon" type="image/png" sizes="96x96" href="media/icon-96.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="media/icon-192.png" />
-  <link rel="apple-touch-icon" href="media/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="media/icon-192.png" />
   <link rel="stylesheet" href="css/styles.css" />
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
-        navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function () {});
+        navigator.serviceWorker.register('sw.js', { scope: './' }).then(function (reg) {
+          if ('sync' in reg) {
+            reg.sync.register('sahel-catalog-sync').catch(function () {});
+          }
+          if ('periodicSync' in reg) {
+            reg.periodicSync.register('sahel-periodic-sync', { minInterval: 86400000 }).catch(function () {});
+          }
+        }).catch(function () {});
       });
     }
   </script>

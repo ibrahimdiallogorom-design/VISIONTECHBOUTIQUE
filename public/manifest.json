@@ -2,18 +2,30 @@
   "id": "/VISIONTECHBOUTIQUE/index.html",
   "name": "SahelExpress Boutique",
   "short_name": "SahelExpress",
-  "description": "Commander des articles manufactures et produits locaux a 100 pourcent hors-ligne avec bascule automatique par SMS.",
+  "description": "Plateforme E-Commerce Locale et Interurbaine Resiliente Offline-First avec bascule automatique par SMS pour le Sahel et le Liptako.",
   "start_url": "/VISIONTECHBOUTIQUE/index.html",
   "scope": "/VISIONTECHBOUTIQUE/",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui",
+    "browser"
+  ],
   "background_color": "#0f172a",
   "theme_color": "#d97706",
   "orientation": "portrait",
   "dir": "ltr",
   "lang": "fr",
+  "iarc_rating_id": "e84b072d-71b3-4d3e-86ae-31a8ce4e53b7",
   "prefer_related_applications": false,
-  "categories": ["shopping", "business"],
+  "related_applications": [],
+  "categories": [
+    "shopping",
+    "business",
+    "productivity",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "/VISIONTECHBOUTIQUE/media/icon-48.png",
@@ -70,7 +82,14 @@
       "sizes": "540x720",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Catalogue Hors-Ligne SahelExpress sur Mobile"
+      "label": "Catalogue Hors-Ligne SahelExpress sur Smartphone"
+    },
+    {
+      "src": "/VISIONTECHBOUTIQUE/media/screenshot-mobile.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Panier et Protocole SMS Compacte SahelExpress"
     },
     {
       "src": "/VISIONTECHBOUTIQUE/media/screenshot-wide.png",
@@ -106,9 +125,64 @@
           "type": "image/png"
         }
       ]
+    },
+    {
+      "name": "Installation Mobile",
+      "short_name": "Installer",
+      "description": "Partager l application hors-ligne",
+      "url": "/VISIONTECHBOUTIQUE/install.html",
+      "icons": [
+        {
+          "src": "/VISIONTECHBOUTIQUE/media/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     }
   ],
   "launch_handler": {
-    "client_mode": "navigate-existing"
-  }
+    "client_mode": [
+      "navigate-existing",
+      "auto"
+    ]
+  },
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "handle_links": "preferred",
+  "scope_extensions": [
+    {
+      "origin": "https://ibrahimdiallogorom-design.github.io"
+    }
+  ],
+  "share_target": {
+    "action": "/VISIONTECHBOUTIQUE/index.html",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "protocol_handlers": [
+    {
+      "protocol": "web+sahelexpress",
+      "url": "/VISIONTECHBOUTIQUE/index.html?cmd=%s"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "/VISIONTECHBOUTIQUE/merchant.html",
+      "accept": {
+        "application/json": [
+          ".json"
+        ]
+      }
+    }
+  ],
+  "note_taking": {
+    "new_note_url": "/VISIONTECHBOUTIQUE/index.html?tab=reviews"
+  },
+  "widgets": []
 }
